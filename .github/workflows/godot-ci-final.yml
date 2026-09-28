@@ -1,0 +1,77 @@
+name: Build MCP Final
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-mcp-final
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Configure Git defaults
+        run: git config --global init.defaultBranch main
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Build Next.js
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Audit dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Check Python bridge
+        run: python3 -m py_compile godot/public_bridge.py
+
+      - name: Check Godot smoke-test project
+        run: test -f runtime/godot-smoke-test/project.godot
+
+      - name: Verify Godot .NET runtime
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y curl unzip
+          curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
+          curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
+          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
+          test -n "$CHECKSUM"
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
+          rm -rf /tmp/godot
+          mkdir -p /tmp/godot
+          unzip -oq /tmp/godot.zip -d /tmp/godot
+          GODOT_DIR=$(find /tmp/godot -maxdepth 1 -type d -name 'Godot_v4.7.2-stable_mono_linux_x86_64' -print -quit)
+          test -n "$GODOT_DIR"
+          test -d "$GODOT_DIR/GodotSharp/Api/Debug"
+          GODOT_BIN=$(find "$GODOT_DIR" -maxdepth 1 -type f -name 'Godot_v4.7.2-stable_mono_linux*' -print -quit)
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          "$GODOT_BIN" --version
+          "$GODOT_BIN" --headless --path runtime/godot-smoke-test --editor --quit
+
+      - name: Verify repository is Godot-only
+        run: |
+          ! grep -RniE "O3DE|o3de|Blender|blender/" app godot runtime .devcontainer README.md 2>/dev/null
