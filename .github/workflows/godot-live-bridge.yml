@@ -1,4 +1,5 @@
 name: Godot Live Bridge
+
 on:
   workflow_dispatch:
     inputs:
@@ -6,9 +7,11 @@ on:
         required: false
         default: "180"
         type: string
+
 concurrency:
   group: godot-live-bridge
   cancel-in-progress: true
+
 jobs:
   bridge:
     runs-on: ubuntu-24.04
@@ -16,15 +19,22 @@ jobs:
     permissions:
       contents: write
     env:
-      GIT_CONFIG_COUNT: "1"
-      GIT_CONFIG_KEY_0: init.defaultBranch
-      GIT_CONFIG_VALUE_0: main
+      GH_TOKEN: ${{ github.token }}
+
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout repository
+        run: |
+          set -e
+          git config --global init.defaultBranch main
+          git clone --depth 1 --branch "$GITHUB_REF_NAME" "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@github.com"
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
+
       - name: Install Godot 4.7.2 .NET
         run: |
           set -e
@@ -48,6 +58,7 @@ jobs:
           chmod +x "$GODOT_BIN"
           "$GODOT_BIN" --version
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
       - name: Start bridge
         run: |
           nohup env GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT=$GITHUB_WORKSPACE python3 godot/public_bridge.py >/tmp/godot.log 2>&1 &
@@ -61,11 +72,13 @@ jobs:
           done
           test "$READY" -eq 1
           curl -fsS http://127.0.0.1:9765/selftest
+
       - name: Install cloudflared
         run: |
           curl -fL --retry 8 -o /tmp/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
           echo "77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2  /tmp/cloudflared" | sha256sum -c -
           chmod +x /tmp/cloudflared
+
       - name: Tunnel
         id: tunnel
         run: |
@@ -83,26 +96,25 @@ jobs:
           test "$READY" -eq 1
           curl -fsS "$URL/health"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
+
       - name: Publish bridge URL
         env:
           URL: ${{ steps.tunnel.outputs.url }}
         run: |
           jq -n --arg url "$URL" '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot"}' > runtime/godot-bridge.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@github.com"
           git add runtime/godot-bridge.json
           git commit -m "chore: publish live Godot bridge [skip ci]" || true
           git push
+
       - name: Keep online
         env:
           MINUTES: ${{ inputs.duration_minutes }}
         run: sleep $((MINUTES*60))
+
       - name: Clear bridge
         if: always()
         run: |
           jq -n '{status:"not_configured",engine:"Godot",url:"",runtime:"Godot 4.7.2-stable .NET"}' > runtime/godot-bridge.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@github.com"
           git add runtime/godot-bridge.json
           git commit -m "chore: clear Godot bridge [skip ci]" || true
           git push || true
