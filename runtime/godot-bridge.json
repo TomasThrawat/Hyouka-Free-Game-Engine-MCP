@@ -1,9 +1,6 @@
 {
-  "status": "ok",
+  "status": "not_configured",
   "engine": "Godot",
-  "url": "https://jeans-leading-introduce-saw.trycloudflare.com",
-  "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
-  "source": "https://github.com/godotengine/godot",
-  "durationMinutes": "10",
-  "ownerRunId": "36445657734"
+  "url": "",
+  "runtime": "Godot 4.7.2-stable .NET"
 }
