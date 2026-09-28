@@ -1,8 +1,23 @@
-const engines = [
-  ["Godot Web Editor", "https://editor.godotengine.org/"],
-  ["GDevelop", "https://editor.gdevelop.io/"],
-  ["Construct 3", "https://editor.construct.net/"],
-] as const;
+const commands = [
+  "get-global-project",
+  "set-global-project",
+  "create-template",
+  "create-from-template",
+  "register",
+  "register-show",
+  "get-registered",
+  "enable-gem",
+  "disable-gem",
+  "edit-engine-properties",
+  "edit-project-properties",
+  "edit-gem-properties",
+  "sha256",
+  "download",
+  "export-project-configure",
+  "export-project",
+  "repo",
+  "edit-repo-properties",
+];
 
 export default function Home() {
   return (
@@ -15,33 +30,40 @@ export default function Home() {
         lineHeight: 1.5,
       }}
     >
-      <h1>Hyouka Free Game Engine MCP</h1>
+      <h1>Hyouka O3DE MCP</h1>
       <p>
-        Mobile-first free stack: Vercel Streamable HTTP MCP + GitHub Codespaces +
-        browser-native engines + headless Blender.
+        Streamable HTTP MCP hosted on Vercel for the Open 3D Engine (O3DE).
       </p>
       <p>
         MCP endpoint: <code>/api/mcp</code>
       </p>
-      <h2>Browser engines</h2>
+
+      <h2>Engine</h2>
+      <p>
+        Source:{" "}
+        <a href="https://github.com/o3de/o3de" target="_blank" rel="noreferrer">
+          github.com/o3de/o3de
+        </a>
+      </p>
+      <p>
+        The MCP mirrors the first-party subcommands registered by{" "}
+        <code>scripts/o3de.py</code>.
+      </p>
+
+      <h2>Exposed CLI tools</h2>
       <ul>
-        {engines.map(([name, url]) => (
-          <li key={name}>
-            <a href={url} target="_blank" rel="noreferrer">
-              {name}
-            </a>
+        {commands.map((command) => (
+          <li key={command}>
+            <code>o3de_{command.replaceAll("-", "_")}</code>
           </li>
         ))}
       </ul>
-      <h2>Blender</h2>
+
+      <h2>Execution model</h2>
       <p>
-        Blender runs headless in GitHub Codespaces on CPU. The Vercel MCP exposes
-        scene, object, save, render, and GLB export tools.
-      </p>
-      <h2>Cost boundary</h2>
-      <p>
-        This project intentionally does not provision paid GPU cloud, paid overage,
-        Unity cloud editors, or Unreal cloud editors.
+        Vercel hosts the MCP protocol layer. The actual O3DE process runs in a
+        separate HTTP bridge because Vercel Functions do not provide a persistent
+        O3DE engine installation.
       </p>
     </main>
   );

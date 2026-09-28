@@ -1,12 +1,10 @@
 name: Build MCP
+
 on:
   push:
     branches: ["main"]
-    paths-ignore:
-      - "runtime/blender-bridge.json"
   pull_request:
-    paths-ignore:
-      - "runtime/blender-bridge.json"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,3 +15,5 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+      - name: Validate O3DE bridge syntax
+        run: python3 -m py_compile o3de/bridge.py

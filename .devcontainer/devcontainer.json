@@ -1,14 +1,17 @@
 {
-  "name": "Hyouka Free Game Engine MCP",
+  "name": "Hyouka O3DE MCP",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
-  "postCreateCommand": "bash .devcontainer/install-blender.sh && bash .devcontainer/install-cloudflared.sh",
-  "postStartCommand": "bash .devcontainer/start-blender.sh",
-  "forwardPorts": [3000],
+  "forwardPorts": [3000, 9765],
   "portsAttributes": {
     "3000": {
-      "label": "Next.js MCP Gateway",
+      "label": "Vercel MCP Gateway",
       "protocol": "http",
       "onAutoForward": "notify"
+    },
+    "9765": {
+      "label": "O3DE HTTP Bridge",
+      "protocol": "http",
+      "onAutoForward": "silent"
     }
   }
 }

@@ -1,33 +1,31 @@
 import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
 
-const engines = {
-  godot: {
-    name: "Godot Web Editor",
-    url: "https://editor.godotengine.org/",
-    mode: "web",
-  },
-  gdevelop: {
-    name: "GDevelop Web Editor",
-    url: "https://editor.gdevelop.io/",
-    mode: "web",
-  },
-  construct: {
-    name: "Construct 3",
-    url: "https://editor.construct.net/",
-    mode: "web",
-  },
-} as const;
-
 const DEFAULT_BRIDGE_CONFIG_URL =
-  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/blender-bridge.json";
+  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/o3de-bridge.json";
 
-type BridgeResult = {
-  status?: string;
-  error?: string;
-  message?: string;
-  [key: string]: unknown;
-};
+const O3DE_COMMANDS = [
+  ["get-global-project", "Read or manage the configured global project. Pass the exact O3DE CLI arguments in args."],
+  ["set-global-project", "Set the configured global project. Pass the exact O3DE CLI arguments in args."],
+  ["create-template", "Create an O3DE engine template. Pass the exact O3DE CLI arguments in args."],
+  ["create-from-template", "Create an engine from a template. Pass the exact O3DE CLI arguments in args."],
+  ["register", "Register an O3DE engine, project, gem, or repository path. Pass the exact O3DE CLI arguments in args."],
+  ["register-show", "Print the current O3DE registration database. Pass the exact O3DE CLI arguments in args."],
+  ["get-registered", "Get a registered O3DE object by name or path. Pass the exact O3DE CLI arguments in args."],
+  ["enable-gem", "Enable an O3DE Gem for a project. Pass the exact O3DE CLI arguments in args."],
+  ["disable-gem", "Disable an O3DE Gem for a project. Pass the exact O3DE CLI arguments in args."],
+  ["edit-engine-properties", "Read or edit O3DE engine properties. Pass the exact O3DE CLI arguments in args."],
+  ["edit-project-properties", "Read or edit O3DE project properties. Pass the exact O3DE CLI arguments in args."],
+  ["edit-gem-properties", "Read or edit O3DE Gem properties. Pass the exact O3DE CLI arguments in args."],
+  ["sha256", "Calculate SHA-256 values using the O3DE CLI. Pass the exact O3DE CLI arguments in args."],
+  ["download", "Use the O3DE downloader. Pass the exact O3DE CLI arguments in args."],
+  ["export-project-configure", "Configure O3DE project export defaults. Pass the exact O3DE CLI arguments in args."],
+  ["export-project", "Export an O3DE project. Pass the exact O3DE CLI arguments in args."],
+  ["repo", "Create or manage an O3DE repository. Pass the exact O3DE CLI arguments in args."],
+  ["edit-repo-properties", "Read or edit O3DE repository properties. Pass the exact O3DE CLI arguments in args."],
+] as const;
+
+type BridgeResult = Record<string, unknown>;
 
 function trimUrl(value: unknown) {
   if (typeof value !== "string") return null;
@@ -37,7 +35,7 @@ function trimUrl(value: unknown) {
 
 async function resolveBridgeUrl() {
   const configUrl =
-    process.env.BLENDER_BRIDGE_CONFIG_URL?.trim() || DEFAULT_BRIDGE_CONFIG_URL;
+    process.env.O3DE_BRIDGE_CONFIG_URL?.trim() || DEFAULT_BRIDGE_CONFIG_URL;
 
   try {
     const response = await fetch(
@@ -45,18 +43,20 @@ async function resolveBridgeUrl() {
       { cache: "no-store" },
     );
     if (response.ok) {
-      const payload = (await response.json()) as { url?: unknown };
-      const dynamicUrl = trimUrl(payload.url);
-      if (dynamicUrl) return dynamicUrl;
+      const payload = (await response.json()) as { url?: unknown; status?: unknown };
+      if (payload.status === "ok") {
+        const dynamicUrl = trimUrl(payload.url);
+        if (dynamicUrl) return dynamicUrl;
+      }
     }
   } catch {
-    // Fall back to a direct URL if a static URL was explicitly configured.
+    // Fall through to an explicitly configured direct URL.
   }
 
-  return trimUrl(process.env.BLENDER_BRIDGE_URL);
+  return trimUrl(process.env.O3DE_BRIDGE_URL);
 }
 
-async function callBlender(
+async function callO3DE(
   path: string,
   body?: Record<string, unknown>,
 ): Promise<BridgeResult> {
@@ -65,9 +65,10 @@ async function callBlender(
   if (!base) {
     return {
       status: "not_configured",
-      error: "No live Blender bridge URL is available.",
+      error: "No live O3DE bridge URL is configured.",
+      expected: "O3DE_BRIDGE_URL or a runtime/o3de-bridge.json file with status=ok.",
       hint:
-        "The free Codespaces runtime must be started so its Cloudflare Quick Tunnel URL can be published to GitHub.",
+        "The Vercel MCP is deployed, but O3DE itself must run on a separate Linux/Windows host or Codespace.",
     };
   }
 
@@ -79,17 +80,18 @@ async function callBlender(
       cache: "no-store",
     });
 
-    const text = await response.text();
+    const raw = await response.text();
     let payload: BridgeResult;
     try {
-      payload = JSON.parse(text) as BridgeResult;
+      payload = JSON.parse(raw) as BridgeResult;
     } catch {
-      payload = { status: "error", message: text };
+      payload = { status: "error", message: raw };
     }
 
     if (!response.ok) {
       return { status: "error", ...payload, httpStatus: response.status };
     }
+
     return payload;
   } catch (error) {
     return {
@@ -104,277 +106,84 @@ const textResult = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
 });
 
-const artifactUrlFor = async (filename: unknown) => {
-  const name = typeof filename === "string" ? filename : null;
-  const base = await resolveBridgeUrl();
-  return name && base ? `${base}/files/${encodeURIComponent(name)}` : undefined;
-};
+const cliInput = z.object({
+  args: z.array(z.string().max(512)).max(64).default([]),
+  cwd: z.string().max(1024).optional(),
+  timeoutSeconds: z.number().int().min(1).max(300).optional(),
+});
 
 const handler = createMcpHandler((server) => {
   server.registerTool(
-    "list_free_web_engines",
+    "o3de_status",
     {
-      title: "List Free Web Engines",
+      title: "O3DE Status",
       description:
-        "List browser-native game engines available in the free no-PC stack.",
+        "Check whether the remote O3DE bridge is reachable and which O3DE installation it exposes.",
+    },
+    async () => textResult(await callO3DE("/health")),
+  );
+
+  server.registerTool(
+    "o3de_commands",
+    {
+      title: "O3DE Commands",
+      description:
+        "List every first-party CLI subcommand wired by the O3DE scripts/o3de.py entry point in the inspected O3DE source tree.",
     },
     async () =>
       textResult({
-        policy: "free-only-no-pc",
-        engines: Object.entries(engines).map(([id, value]) => ({
-          id,
-          ...value,
+        engine: "Open 3D Engine (O3DE)",
+        sourceRepository: "https://github.com/o3de/o3de",
+        sourceRef: "development",
+        sourceEntryPoint: "scripts/o3de.py",
+        commands: O3DE_COMMANDS.map(([command, description]) => ({
+          command,
+          description,
+          mcpTool: `o3de_${command.replaceAll("-", "_")}`,
         })),
-        blender: {
-          name: "Blender Headless",
-          mode: "codespaces",
-          license: "Blender is free and open source",
-          control:
-            "Vercel MCP -> free GitHub Codespaces -> Blender -> free Cloudflare Quick Tunnel",
-        },
-        note: "No paid GPU cloud or paid overage is included.",
+        note:
+          "android.py is imported by o3de.py but does not register a top-level argparse subcommand in the inspected source, so it is not exposed as a separate CLI tool.",
       }),
   );
 
   server.registerTool(
-    "get_web_engine_url",
+    "o3de_cli_help",
     {
-      title: "Get Web Engine URL",
+      title: "O3DE CLI Help",
       description:
-        "Return the official browser editor URL for one free web engine.",
+        "Ask the actual O3DE scripts/o3de.py entry point for its current CLI help output.",
       inputSchema: z.object({
-        engine: z.enum(["godot", "gdevelop", "construct"]),
+        topic: z.string().max(120).optional(),
       }),
     },
-    async ({ engine }) => textResult({ id: engine, ...engines[engine] }),
+    async ({ topic }) =>
+      textResult(
+        await callO3DE("/help", {
+          topic: topic?.trim() || "",
+        }),
+      ),
   );
 
-  server.registerTool(
-    "free_stack_manifest",
-    {
-      title: "Free Stack Manifest",
-      description:
-        "Return the verified free/no-PC stack and its hard cost boundaries.",
-    },
-    async () =>
-      textResult({
-        policy: "free-only-no-pc",
-        control: "Composio / Custom MCP",
-        mcpHosting: "Vercel Hobby",
-        cloudDev: "GitHub Codespaces free quota",
-        blender: {
-          engine: "Blender Headless",
-          runtime: "GitHub Codespaces CPU runtime",
-          bridge: "Cloudflare Quick Tunnel",
-          transport:
-            "Vercel Streamable HTTP MCP -> Cloudflare HTTP -> Blender bridge",
-        },
-        browserEngines: Object.keys(engines),
-        desktopGpuEngines: [],
-        spendingPolicy:
-          "Do not rely on paid overage or paid GPU cloud.",
-        tunnelPolicy:
-          "Cloudflare Quick Tunnel is free and requires no account; it is temporary and intended for development/testing.",
-      }),
-  );
-
-  server.registerTool(
-    "codespaces_bootstrap",
-    {
-      title: "Codespaces Bootstrap",
-      description:
-        "Return the exact free Codespaces bootstrap flow for headless Blender.",
-    },
-    async () =>
-      textResult({
-        repository:
-          "https://github.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP",
-        freeRuntime: "GitHub Codespaces",
-        install:
-          "bash .devcontainer/install-blender.sh && bash .devcontainer/install-cloudflared.sh",
-        start: "bash .devcontainer/start-blender.sh",
-        health: "curl http://127.0.0.1:9765/health",
-        publicUrlSource:
-          "runtime/blender-bridge.json (published by the Codespace runtime)",
-      }),
-  );
-
-  server.registerTool(
-    "desktop_engine_status",
-    {
-      title: "Desktop Engine Status",
-      description:
-        "Explain why Unity and Unreal are not provisioned as verified free cloud runtimes.",
-      inputSchema: z.object({
-        engine: z.enum(["unity", "unreal"]),
-      }),
-    },
-    async ({ engine }) =>
-      textResult({
-        engine,
-        status: "not_provisioned",
-        reason:
-          "No verified free GPU-backed cloud editor runtime is included.",
-        alternative:
-          "Use Blender Headless in GitHub Codespaces or the browser-native engines.",
-      }),
-  );
-
-  server.registerTool(
-    "blender_status",
-    {
-      title: "Blender Status",
-      description:
-        "Check whether the free headless Blender bridge is reachable.",
-    },
-    async () =>
-      textResult({
-        bridge: await callBlender("/health"),
-        configSource:
-          process.env.BLENDER_BRIDGE_CONFIG_URL ||
-          DEFAULT_BRIDGE_CONFIG_URL,
-      }),
-  );
-
-  server.registerTool(
-    "blender_new_scene",
-    {
-      title: "Blender New Scene",
-      description: "Clear the Blender scene.",
-    },
-    async () => textResult(await callBlender("/scene/new", {})),
-  );
-
-  server.registerTool(
-    "blender_create_basic_scene",
-    {
-      title: "Blender Create Basic Scene",
-      description:
-        "Create an editable 3D game-style test scene with ground, player, obstacle, pickup, camera, and light.",
-    },
-    async () => textResult(await callBlender("/scene/basic", {})),
-  );
-
-  server.registerTool(
-    "blender_list_objects",
-    {
-      title: "Blender List Objects",
-      description: "List objects currently in the Blender scene.",
-    },
-    async () => textResult(await callBlender("/scene/objects")),
-  );
-
-  server.registerTool(
-    "blender_add_primitive",
-    {
-      title: "Blender Add Primitive",
-      description:
-        "Add a mesh primitive with transform and RGB/RGBA material color.",
-      inputSchema: z.object({
-        primitive: z.enum([
-          "cube",
-          "sphere",
-          "cylinder",
-          "cone",
-          "torus",
-          "plane",
-        ]),
-        name: z.string().optional(),
-        location: z
-          .tuple([z.number(), z.number(), z.number()])
-          .optional(),
-        rotation: z
-          .tuple([z.number(), z.number(), z.number()])
-          .optional(),
-        scale: z.tuple([z.number(), z.number(), z.number()]).optional(),
-        color: z
-          .union([
-            z.tuple([z.number(), z.number(), z.number()]),
-            z.tuple([z.number(), z.number(), z.number(), z.number()]),
-          ])
-          .optional(),
-      }),
-    },
-    async (input) => textResult(await callBlender("/object/add", input)),
-  );
-
-  server.registerTool(
-    "blender_transform_object",
-    {
-      title: "Blender Transform Object",
-      description: "Move, rotate, or scale an existing Blender object.",
-      inputSchema: z.object({
-        name: z.string(),
-        location: z
-          .tuple([z.number(), z.number(), z.number()])
-          .optional(),
-        rotation: z
-          .tuple([z.number(), z.number(), z.number()])
-          .optional(),
-        scale: z.tuple([z.number(), z.number(), z.number()]).optional(),
-      }),
-    },
-    async (input) =>
-      textResult(await callBlender("/object/transform", input)),
-  );
-
-  server.registerTool(
-    "blender_delete_object",
-    {
-      title: "Blender Delete Object",
-      description: "Delete an existing Blender object by name.",
-      inputSchema: z.object({ name: z.string() }),
-    },
-    async (input) => textResult(await callBlender("/object/delete", input)),
-  );
-
-  server.registerTool(
-    "blender_save_blend",
-    {
-      title: "Blender Save Blend",
-      description:
-        "Save the current Blender scene into the Codespace output directory.",
-      inputSchema: z.object({ filename: z.string().optional() }),
-    },
-    async (input) => textResult(await callBlender("/scene/save", input)),
-  );
-
-  server.registerTool(
-    "blender_render",
-    {
-      title: "Blender Render",
-      description:
-        "Render the current Blender scene to a PNG using Blender Eevee.",
-      inputSchema: z.object({
-        filename: z.string().optional(),
-        width: z.number().int().min(320).max(1280).optional(),
-        height: z.number().int().min(180).max(720).optional(),
-      }),
-    },
-    async (input) => {
-      const result = await callBlender("/scene/render", input);
-      return textResult({
-        ...result,
-        artifactUrl: await artifactUrlFor(result.filename),
-      });
-    },
-  );
-
-  server.registerTool(
-    "blender_export_glb",
-    {
-      title: "Blender Export GLB",
-      description: "Export the current Blender scene as a GLB artifact.",
-      inputSchema: z.object({ filename: z.string().optional() }),
-    },
-    async (input) => {
-      const result = await callBlender("/scene/export-glb", input);
-      return textResult({
-        ...result,
-        artifactUrl: await artifactUrlFor(result.filename),
-      });
-    },
-  );
+  for (const [command, description] of O3DE_COMMANDS) {
+    const toolName = `o3de_${command.replaceAll("-", "_")}`;
+    server.registerTool(
+      toolName,
+      {
+        title: `O3DE ${command}`,
+        description: `${description} The bridge executes argv directly and never invokes a shell.`,
+        inputSchema: cliInput,
+      },
+      async ({ args, cwd, timeoutSeconds }) =>
+        textResult(
+          await callO3DE("/cli", {
+            command,
+            args,
+            cwd,
+            timeoutSeconds,
+          }),
+        ),
+    );
+  }
 });
 
 export { handler as GET, handler as POST };

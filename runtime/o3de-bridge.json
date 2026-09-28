@@ -1,0 +1,8 @@
+{
+  "status": "not_configured",
+  "engine": "O3DE",
+  "url": "",
+  "transport": "http",
+  "runtime": "external O3DE bridge",
+  "notes": "Set O3DE_BRIDGE_URL or replace this runtime manifest with a reachable HTTPS bridge URL."
+}

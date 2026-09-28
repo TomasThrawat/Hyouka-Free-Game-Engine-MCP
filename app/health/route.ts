@@ -1,22 +1,18 @@
-const bridgeConfigUrl =
-  process.env.BLENDER_BRIDGE_CONFIG_URL ||
-  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/blender-bridge.json";
+const DEFAULT_BRIDGE_CONFIG_URL =
+  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/o3de-bridge.json";
 
 export function GET() {
   return Response.json({
     name: "hyouka-free-game-engine-mcp",
     status: "ok",
     mcpEndpoint: "/api/mcp",
-    policy: "free-only-no-pc",
-    browserEngines: ["godot-web", "gdevelop-web", "construct-web"],
-    blender: {
-      mode: "headless-codespaces",
-      bridgeConfigUrl,
-      directBridgeConfigured: Boolean(process.env.BLENDER_BRIDGE_URL),
-      port: 9765,
-      tunnel: "Cloudflare Quick Tunnel",
-    },
-    desktopEditors: ["unity", "unreal"],
-    desktopRuntimeStatus: "not-provisioned",
+    engine: "O3DE",
+    source: "https://github.com/o3de/o3de",
+    cliEntryPoint: "scripts/o3de.py",
+    bridgeConfigUrl:
+      process.env.O3DE_BRIDGE_CONFIG_URL || DEFAULT_BRIDGE_CONFIG_URL,
+    directBridgeConfigured: Boolean(process.env.O3DE_BRIDGE_URL),
+    executionModel:
+      "Vercel hosts MCP; O3DE commands execute through a separate HTTP bridge.",
   });
 }
