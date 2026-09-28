@@ -1,8 +1,10 @@
 {
-  "status": "starting",
+  "status": "ok",
   "engine": "Blender",
-  "url": "",
+  "url": "https://colin-festival-plastic-yea.trycloudflare.com",
+  "createdAt": "2026-09-28T09:38:43.187708+00:00",
   "transport": "http",
   "runtime": "GitHub Actions public runner",
-  "policy": "free-only-no-pc"
+  "policy": "free-only-no-pc",
+  "notes": "Temporary Cloudflare Quick Tunnel for development/testing."
 }
