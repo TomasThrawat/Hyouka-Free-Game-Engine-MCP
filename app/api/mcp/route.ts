@@ -2,109 +2,293 @@ import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
 
 const engines = {
-  godot:{name:"Godot Web Editor",url:"https://editor.godotengine.org/",mode:"web"},
-  gdevelop:{name:"GDevelop Web Editor",url:"https://editor.gdevelop.io/",mode:"web"},
-  construct:{name:"Construct 3",url:"https://editor.construct.net/",mode:"web"}
+  godot: {
+    name: "Godot Web Editor",
+    url: "https://editor.godotengine.org/",
+    mode: "web",
+  },
+  gdevelop: {
+    name: "GDevelop Web Editor",
+    url: "https://editor.gdevelop.io/",
+    mode: "web",
+  },
+  construct: {
+    name: "Construct 3",
+    url: "https://editor.construct.net/",
+    mode: "web",
+  },
 } as const;
+
+type BridgeResult = {
+  status?: string;
+  error?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+const bridgeUrl = () => {
+  const value = process.env.BLENDER_BRIDGE_URL?.trim().replace(/\/$/, "");
+  return value || null;
+};
+
+async function callBlender(path: string, body?: Record<string, unknown>): Promise<BridgeResult> {
+  const base = bridgeUrl();
+  if (!base) {
+    return {
+      status: "not_configured",
+      error: "BLENDER_BRIDGE_URL is not configured on the Vercel deployment.",
+      hint: "Start the free Codespaces Blender bridge and set BLENDER_BRIDGE_URL to its public port-9765 URL.",
+    };
+  }
+
+  const response = await fetch(base + path, {
+    method: body ? "POST" : "GET",
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  const text = await response.text();
+  let payload: BridgeResult;
+  try {
+    payload = JSON.parse(text) as BridgeResult;
+  } catch {
+    payload = { status: "error", message: text };
+  }
+
+  if (!response.ok) {
+    return { status: "error", ...payload, httpStatus: response.status };
+  }
+  return payload;
+}
+
+const textResult = (value: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
+});
 
 const handler = createMcpHandler((server) => {
   server.registerTool(
     "list_free_web_engines",
     {
-      title:"List Free Web Engines",
-      description:"List the browser-native game engines enabled for the no-PC free stack."
+      title: "List Free Web Engines",
+      description: "List browser-native game engines available in the free no-PC stack.",
     },
-    async () => ({
-      content:[{
-        type:"text",
-        text:JSON.stringify({
-          policy:"free-only-no-pc",
-          engines:Object.entries(engines).map(([id,value])=>({id,...value})),
-          note:"These are web editors. No GPU cloud desktop is assumed."
-        },null,2)
-      }]
-    })
+    async () =>
+      textResult({
+        policy: "free-only-no-pc",
+        engines: Object.entries(engines).map(([id, value]) => ({ id, ...value })),
+        blender: {
+          name: "Blender Headless",
+          mode: "codespaces",
+          license: "Blender is free and open source",
+          control: "Vercel MCP -> GitHub Codespaces -> Blender bridge",
+        },
+        note: "No paid GPU cloud is included.",
+      }),
   );
 
   server.registerTool(
     "get_web_engine_url",
     {
-      title:"Get Web Engine URL",
-      description:"Return the official web editor URL for one enabled engine.",
-      inputSchema:z.object({engine:z.enum(["godot","gdevelop","construct"])})
+      title: "Get Web Engine URL",
+      description: "Return the official browser editor URL for one free web engine.",
+      inputSchema: z.object({
+        engine: z.enum(["godot", "gdevelop", "construct"]),
+      }),
     },
-    async ({engine}) => ({
-      content:[{
-        type:"text",
-        text:JSON.stringify({id:engine,...engines[engine]},null,2)
-      }]
-    })
+    async ({ engine }) => textResult({ id: engine, ...engines[engine] }),
   );
 
   server.registerTool(
     "free_stack_manifest",
     {
-      title:"Free Stack Manifest",
-      description:"Return the complete no-PC architecture and free-resource boundaries."
+      title: "Free Stack Manifest",
+      description: "Return the verified free/no-PC stack and its hard cost boundaries.",
     },
-    async () => ({
-      content:[{
-        type:"text",
-        text:JSON.stringify({
-          layers:{
-            control:"Composio/custom MCP",
-            mcpHosting:"Vercel free deployment",
-            cloudDev:"GitHub Codespaces",
-            browserEngines:Object.keys(engines),
-            desktopGpuEngines:[]
-          },
-          codespaces:{
-            includedForPersonalFreeAccounts:"120 core-hours/month and 15 GB-month storage",
-            spendingPolicy:"do not rely on paid overage"
-          },
-          rule:"Only verified free/no-card paths are included in this manifest."
-        },null,2)
-      }]
-    })
+    async () =>
+      textResult({
+        policy: "free-only-no-pc",
+        control: "Composio / Custom MCP",
+        mcpHosting: "Vercel Hobby",
+        cloudDev: "GitHub Codespaces free quota",
+        blender: {
+          engine: "Blender Headless",
+          runtime: "GitHub Codespaces CPU runtime",
+          bridgePort: 9765,
+          transport: "Vercel Streamable HTTP MCP -> Codespaces HTTP bridge",
+        },
+        browserEngines: Object.keys(engines),
+        desktopGpuEngines: [],
+        spendingPolicy: "Do not rely on paid overage or paid GPU cloud.",
+      }),
   );
 
   server.registerTool(
     "codespaces_bootstrap",
     {
-      title:"Codespaces Bootstrap",
-      description:"Return cloud-only commands used inside GitHub Codespaces to install and build this project."
+      title: "Codespaces Bootstrap",
+      description: "Return exact free Codespaces bootstrap commands and public bridge URL pattern.",
     },
-    async () => ({
-      content:[{
-        type:"text",
-        text:[
-          "git clone https://github.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP.git",
-          "cd Hyouka-Free-Game-Engine-MCP",
-          "npm install",
-          "npm run build"
-        ].join("\n")
-      }]
-    })
+    async () =>
+      textResult({
+        repository: "https://github.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP",
+        freeRuntime: "GitHub Codespaces",
+        commands: [
+          "bash .devcontainer/install-blender.sh",
+          "bash .devcontainer/start-blender.sh",
+          "curl http://127.0.0.1:9765/health",
+        ],
+        bridgeUrlPattern: "https://CODESPACENAME-9765.app.github.dev",
+      }),
   );
 
   server.registerTool(
     "desktop_engine_status",
     {
-      title:"Desktop Engine Status",
-      description:"Explain which desktop engines are intentionally not provisioned under the free no-PC policy.",
-      inputSchema:z.object({engine:z.enum(["unity","unreal"])})
+      title: "Desktop Engine Status",
+      description: "Explain why Unity and Unreal are not provisioned as verified free cloud runtimes.",
+      inputSchema: z.object({
+        engine: z.enum(["unity", "unreal"]),
+      }),
     },
-    async ({engine}) => ({
-      content:[{
-        type:"text",
-        text:JSON.stringify({
-          engine,
-          status:"not-provisioned",
-          reason:"A free GPU-backed desktop runtime was not assumed or advertised without current verification.",
-          alternative:"Use the enabled browser engines or GitHub Codespaces for source/build work."
-        },null,2)
-      }]
-    })
+    async ({ engine }) =>
+      textResult({
+        engine,
+        status: "not_provisioned",
+        reason: "No verified free GPU-backed cloud editor runtime is included.",
+        alternative: "Use Blender Headless in GitHub Codespaces or the browser-native engines.",
+      }),
+  );
+
+  server.registerTool(
+    "blender_status",
+    {
+      title: "Blender Status",
+      description: "Check whether the free headless Blender bridge is reachable.",
+    },
+    async () => textResult(await callBlender("/health")),
+  );
+
+  server.registerTool(
+    "blender_new_scene",
+    {
+      title: "Blender New Scene",
+      description: "Clear the Blender scene.",
+    },
+    async () => textResult(await callBlender("/scene/new", {})),
+  );
+
+  server.registerTool(
+    "blender_create_basic_scene",
+    {
+      title: "Blender Create Basic Scene",
+      description: "Create an editable 3D game-style test scene with ground, player, obstacle, pickup, camera, and light.",
+    },
+    async () => textResult(await callBlender("/scene/basic", {})),
+  );
+
+  server.registerTool(
+    "blender_list_objects",
+    {
+      title: "Blender List Objects",
+      description: "List objects currently in the Blender scene.",
+    },
+    async () => textResult(await callBlender("/scene/objects")),
+  );
+
+  server.registerTool(
+    "blender_add_primitive",
+    {
+      title: "Blender Add Primitive",
+      description: "Add a mesh primitive with transform and RGB/RGBA material color.",
+      inputSchema: z.object({
+        primitive: z.enum(["cube", "sphere", "cylinder", "cone", "torus", "plane"]),
+        name: z.string().optional(),
+        location: z.tuple([z.number(), z.number(), z.number()]).optional(),
+        rotation: z.tuple([z.number(), z.number(), z.number()]).optional(),
+        scale: z.tuple([z.number(), z.number(), z.number()]).optional(),
+        color: z.union([
+          z.tuple([z.number(), z.number(), z.number()]),
+          z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        ]).optional(),
+      }),
+    },
+    async (input) => textResult(await callBlender("/object/add", input)),
+  );
+
+  server.registerTool(
+    "blender_transform_object",
+    {
+      title: "Blender Transform Object",
+      description: "Move, rotate, or scale an existing Blender object.",
+      inputSchema: z.object({
+        name: z.string(),
+        location: z.tuple([z.number(), z.number(), z.number()]).optional(),
+        rotation: z.tuple([z.number(), z.number(), z.number()]).optional(),
+        scale: z.tuple([z.number(), z.number(), z.number()]).optional(),
+      }),
+    },
+    async (input) => textResult(await callBlender("/object/transform", input)),
+  );
+
+  server.registerTool(
+    "blender_delete_object",
+    {
+      title: "Blender Delete Object",
+      description: "Delete an existing Blender object by name.",
+      inputSchema: z.object({ name: z.string() }),
+    },
+    async (input) => textResult(await callBlender("/object/delete", input)),
+  );
+
+  server.registerTool(
+    "blender_save_blend",
+    {
+      title: "Blender Save Blend",
+      description: "Save the current Blender scene into the Codespace output directory.",
+      inputSchema: z.object({ filename: z.string().optional() }),
+    },
+    async (input) => textResult(await callBlender("/scene/save", input)),
+  );
+
+  server.registerTool(
+    "blender_render",
+    {
+      title: "Blender Render",
+      description: "Render the current Blender scene to a PNG using Blender Eevee.",
+      inputSchema: z.object({
+        filename: z.string().optional(),
+        width: z.number().int().min(320).max(1280).optional(),
+        height: z.number().int().min(180).max(720).optional(),
+      }),
+    },
+    async (input) => {
+      const result = await callBlender("/scene/render", input);
+      const filename = typeof result.filename === "string" ? result.filename : null;
+      const base = bridgeUrl();
+      return textResult({
+        ...result,
+        artifactUrl: filename && base ? `${base}/files/${encodeURIComponent(filename)}` : undefined,
+      });
+    },
+  );
+
+  server.registerTool(
+    "blender_export_glb",
+    {
+      title: "Blender Export GLB",
+      description: "Export the current Blender scene as a GLB artifact.",
+      inputSchema: z.object({ filename: z.string().optional() }),
+    },
+    async (input) => {
+      const result = await callBlender("/scene/export-glb", input);
+      const filename = typeof result.filename === "string" ? result.filename : null;
+      const base = bridgeUrl();
+      return textResult({
+        ...result,
+        artifactUrl: filename && base ? `${base}/files/${encodeURIComponent(filename)}` : undefined,
+      });
+    },
   );
 });
 
