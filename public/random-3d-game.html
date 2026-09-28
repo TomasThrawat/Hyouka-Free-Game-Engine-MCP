@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Random Neon Run 3D</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070d;color:#fff;font-family:system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:fixed;inset:14px 14px auto 14px;display:flex;justify-content:space-between;pointer-events:none;font-weight:700;text-shadow:0 2px 5px #000}
+#hud span{background:#0b1020cc;border:1px solid #ffffff22;border-radius:12px;padding:9px 12px}
+#hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#0b1020dd;border:1px solid #ffffff22;border-radius:14px;padding:10px 14px;text-align:center;pointer-events:none}
+button{font:inherit}
+#restart{position:fixed;right:14px;top:62px;border:1px solid #ffffff33;background:#121a2ecc;color:#fff;border-radius:10px;padding:9px 12px}
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Random Neon Run 3D game"></canvas>
+<div id="hud"><span id="score">Score 0</span><span id="speed">Speed 1.0x</span></div>
+<button id="restart" type="button">Restart</button>
+<div id="hint">Drag or use ← → to dodge. Collect cyan orbs. Avoid red blocks.</div>
+<script>
+(()=> {
+"use strict";
+const c=document.getElementById("game"),ctx=c.getContext("2d");
+const scoreEl=document.getElementById("score"),speedEl=document.getElementById("speed"),restart=document.getElementById("restart");
+let W=0,H=0,dpr=1,last=0,score=0,alive=true,t=0,spawn=0,roadSeed=Math.random()*99;
+const player={lane:0,x:0,z:0.88};
+let objects=[];
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener("resize",resize);resize();
+function reset(){score=0;alive=true;t=0;spawn=0;objects=[];roadSeed=Math.random()*99;player.lane=0}
+restart.onclick=reset;
+addEventListener("keydown",e=>{if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a"){player.lane=Math.max(-1,player.lane-1);e.preventDefault()}if(e.key==="ArrowRight"||e.key.toLowerCase()==="d"){player.lane=Math.min(1,player.lane+1);e.preventDefault()}if(e.key===" "&& !alive)reset()});
+let downX=0;
+c.addEventListener("pointerdown",e=>downX=e.clientX);
+c.addEventListener("pointerup",e=>{const dx=e.clientX-downX;if(Math.abs(dx)>25)player.lane=Math.max(-1,Math.min(1,player.lane+(dx>0?1:-1)))});
+function add(){const lane=Math.floor(Math.random()*3)-1;objects.push({lane,z:0,type:Math.random()<.72?"bad":"orb",rot:Math.random()*6.28})}
+function proj(lane,z){const p=Math.max(0,Math.min(1,z));const horizon=H*.29,base=H*.94;const y=horizon+(base-horizon)*Math.pow(p,1.45);const roadW=80+(W*.72)*Math.pow(p,1.25);return{x:W/2+lane*roadW*.29,y,w:roadW}}
+function poly(points,fill){ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill()}
+function drawRoad(){
+const horizon=H*.29,base=H*.94;
+poly([[W*.5-35,horizon],[W*.5+35,horizon],[W*.5+W*.38,base],[W*.5-W*.38,base]],"#10182a");
+ctx.strokeStyle="#39d9ff99";ctx.lineWidth=2;
+for(let lane=-1;lane<=1;lane+=2){ctx.beginPath();for(let i=0;i<=20;i++){const z=i/20,p=proj(lane*.5,z);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y)}ctx.stroke()}
+for(let i=0;i<13;i++){let z=((i/13+t*.7)%1);let p=proj(0,z);ctx.fillStyle="#ffffff55";ctx.fillRect(p.x-2,p.y,4,Math.max(2,14*z))}
+}
+function drawObject(o){
+const p=proj(o.lane,o.z),s=10+70*Math.pow(o.z,1.5);
+if(o.type==="orb"){ctx.fillStyle="#39f5ff";ctx.beginPath();ctx.arc(p.x,p.y-s*.45,s*.32,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#bfffff";ctx.stroke()}
+else{const x=p.x-s*.5,y=p.y-s;poly([[x,y],[x+s,y-s*.22],[x+s,p.y-s*.08],[x,p.y]],"#ff365f");ctx.strokeStyle="#ff9aaa";ctx.stroke()}
+}
+function hit(o){return o.z>.78&&o.z<.98&&o.lane===player.lane}
+function frame(now){
+const dt=Math.min(.033,(now-last)/1000||.016);last=now;t+=dt;
+ctx.clearRect(0,0,W,H);ctx.fillStyle="#05070d";ctx.fillRect(0,0,W,H);
+const grd=ctx.createLinearGradient(0,0,0,H);grd.addColorStop(0,"#07132c");grd.addColorStop(.45,"#0b1530");grd.addColorStop(1,"#020308");ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+drawRoad();
+if(alive){
+spawn-=dt;if(spawn<=0){add();spawn=.48+Math.random()*.5}
+for(const o of objects)o.z+=dt*(.25+Math.min(score/900,1)*.35);
+for(const o of objects){if(hit(o)){if(o.type==="orb"){score+=100;o.z=2}else alive=false}}
+objects=objects.filter(o=>o.z<1.15);
+score+=dt*10;
+}
+objects.slice().sort((a,b)=>a.z-b.z).forEach(drawObject);
+const pp=proj(player.lane,.93),ps=34;
+poly([[pp.x-ps,pp.y],[pp.x,pp.y-ps*.9],[pp.x+ps,pp.y],[pp.x+ps*.65,pp.y+10],[pp.x-ps*.65,pp.y+10]],alive?"#66e6ff":"#777");
+scoreEl.textContent=alive?"Score "+Math.floor(score):"Game Over · "+Math.floor(score);
+speedEl.textContent="Speed "+(1+Math.min(score/900,1)*1.4).toFixed(1)+"x";
+if(!alive){ctx.fillStyle="#0009";ctx.fillRect(0,0,W,H);ctx.fillStyle="#fff";ctx.textAlign="center";ctx.font="700 34px system-ui";ctx.fillText("GAME OVER",W/2,H*.48);ctx.font="16px system-ui";ctx.fillText("Press Space or Restart",W/2,H*.53)}
+requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
