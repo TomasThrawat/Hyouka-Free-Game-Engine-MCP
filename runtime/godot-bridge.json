@@ -1,7 +1,6 @@
 {
-  "status": "ok",
+  "status": "not_configured",
   "engine": "Godot",
-  "url": "https://refrigerator-saskatchewan-genetics-consequently.trycloudflare.com",
-  "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
-  "source": "https://github.com/godotengine/godot"
+  "url": "",
+  "runtime": "Godot 4.7.2-stable .NET"
 }
