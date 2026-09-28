@@ -14,6 +14,25 @@ npm run build
 echo "== Dependency audit =="
 npm audit --omit=dev --audit-level=high
 
+echo "== Validate official Godot CLI manifest =="
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path("runtime/godot-official-cli.json")
+m = json.loads(p.read_text())
+flags = m.get("flags", [])
+assert m.get("engine") == "Godot"
+assert m.get("version") == "4.7.2-stable"
+assert m.get("source", {}).get("repository") == "https://github.com/godotengine/godot"
+assert m.get("source", {}).get("ref") == "4.7.2-stable"
+assert m.get("count") == 116 == len(flags)
+assert len(flags) == len(set(flags))
+assert "--export-" not in flags
+assert all(isinstance(f, str) and f.startswith("-") for f in flags)
+assert "--screen" in flags
+print("Official CLI manifest validated: 116 unique switches")
+PY
+
 echo "== Python bridge =="
 python3 -m py_compile godot/public_bridge.py
 
