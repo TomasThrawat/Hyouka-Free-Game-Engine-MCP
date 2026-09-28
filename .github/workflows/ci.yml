@@ -21,6 +21,8 @@ jobs:
             ${{ runner.os }}-nextjs-
       - run: npm install
       - run: npm run build
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Validate O3DE bridge
         run: |
           python3 -m py_compile o3de/bridge.py
