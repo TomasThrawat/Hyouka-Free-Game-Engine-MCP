@@ -1,14 +1,16 @@
 # Hyouka Free Game Engine MCP
 
-No-PC, free-first game-engine MCP stack.
+No-PC, free-only game-engine MCP stack.
 
 ## Architecture
 
-Android browser / ChatGPT
+Android / ChatGPT
 -> Composio
 -> Vercel Streamable HTTP MCP
 -> GitHub Codespaces
--> headless Blender bridge
+-> headless Blender
+-> Cloudflare Quick Tunnel
+-> Blender HTTP bridge
 
 Browser-native editors remain available:
 - Godot Web Editor: https://editor.godotengine.org/
@@ -17,21 +19,35 @@ Browser-native editors remain available:
 
 ## Blender backend
 
-This repository now includes a minimal dependency-free Blender HTTP bridge in `blender/server.py`.
+The repository includes a minimal Blender HTTP bridge in `blender/server.py`.
 
-It runs inside Blender headless mode and exposes:
-- `/health`
-- scene reset and basic-scene creation
-- object list/add/transform/delete
-- `.blend` save
+Supported operations:
+- health check
+- clear scene
+- create a basic game-style scene
+- list objects
+- add / transform / delete primitives
+- save `.blend`
 - CPU/Eevee PNG render
 - GLB export
-- artifact download under `/files/<name>`
+- artifact download
 
-The public MCP surface is:
-`https://hyouka-free-game-engine-mcp.vercel.app/api/mcp`
+## Fully-free remote access
 
-New Blender MCP tools:
+GitHub Codespaces runs Blender headlessly on CPU.
+
+GitHub port forwarding is not used for the Blender bridge. Instead, the Codespace starts a Cloudflare Quick Tunnel:
+`cloudflared tunnel --url http://127.0.0.1:9765`
+
+Cloudflare documents Quick Tunnels as free, temporary, no-account tunnels that generate a random `trycloudflare.com` URL. They are intended for development/testing and have a 200 in-flight request limit; they also do not support SSE. The Blender bridge is plain HTTP, so the SSE limitation does not affect the bridge transport. See https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/
+
+On every Codespace start, the tunnel URL is written to:
+`runtime/blender-bridge.json`
+
+The Vercel MCP reads that public GitHub JSON dynamically, so no manual URL update is required after a Codespace restart.
+
+## MCP tools
+
 - `blender_status`
 - `blender_new_scene`
 - `blender_create_basic_scene`
@@ -43,29 +59,19 @@ New Blender MCP tools:
 - `blender_render`
 - `blender_export_glb`
 
-## Codespaces
-
-The devcontainer installs Blender from the Debian package and starts the bridge on port `9765`.
-
-GitHub Codespaces public forwarding uses:
-`https://CODESPACENAME-9765.app.github.dev`
-
-The Vercel deployment reads:
-`BLENDER_BRIDGE_URL`
-
-Set that variable to the public Codespaces bridge URL. No paid GPU service is required.
-
 ## Free-only policy
 
-This project does not rely on:
-- paid GPU cloud desktops
-- paid overage
-- paid AI APIs
-- Unity cloud editor runtime
-- Unreal cloud editor runtime
+No paid GPU cloud.
+No paid AI API.
+No Vercel paid plan.
+No Cloudflare account or paid tunnel.
+No paid Codespaces overage.
+No Unity/Unreal cloud editor runtime.
 
-GitHub Codespaces availability and quota are controlled by GitHub's current free plan. When the free quota is exhausted, do not enable paid overage.
+GitHub Codespaces has a free quota; when it is exhausted, usage must stop rather than using paid overage.
 
-## Scope
+## Important
 
-Blender is the desktop-grade 3D engine backend; browser engines are the no-install alternatives.
+Quick Tunnels are temporary and have no uptime guarantee. They are a development/testing transport, not a production SLA.
+
+The Blender bridge intentionally exposes only constrained scene operations and does not expose arbitrary remote Python execution.

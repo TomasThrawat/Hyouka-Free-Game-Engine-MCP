@@ -1,19 +1,13 @@
 {
   "name": "Hyouka Free Game Engine MCP",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
-  "postCreateCommand": "bash .devcontainer/install-blender.sh",
+  "postCreateCommand": "bash .devcontainer/install-blender.sh && bash .devcontainer/install-cloudflared.sh",
   "postStartCommand": "bash .devcontainer/start-blender.sh",
-  "forwardPorts": [3000, 9765],
+  "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
       "label": "Next.js MCP Gateway",
       "protocol": "http",
-      "onAutoForward": "notify"
-    },
-    "9765": {
-      "label": "Blender Headless Bridge",
-      "protocol": "http",
-      "visibility": "public",
       "onAutoForward": "notify"
     }
   }

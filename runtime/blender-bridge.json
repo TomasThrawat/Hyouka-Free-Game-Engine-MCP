@@ -1,0 +1,8 @@
+{
+  "status": "booting",
+  "engine": "Blender",
+  "url": "",
+  "transport": "http",
+  "runtime": "GitHub Codespaces",
+  "policy": "free-only-no-pc"
+}
