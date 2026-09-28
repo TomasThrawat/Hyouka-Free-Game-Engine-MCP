@@ -139,7 +139,7 @@ const handler = createMcpHandler((server) => {
         commands: O3DE_COMMANDS.map(([command, description]) => ({
           command,
           description,
-          mcpTool: `o3de_${command.replaceAll("-", "_")}`,
+          mcpTool: `o3de_${command.replace(/-/g, "_")}`,
         })),
         note:
           "android.py is imported by o3de.py but does not register a top-level argparse subcommand in the inspected source, so it is not exposed as a separate CLI tool.",
@@ -165,7 +165,7 @@ const handler = createMcpHandler((server) => {
   );
 
   for (const [command, description] of O3DE_COMMANDS) {
-    const toolName = `o3de_${command.replaceAll("-", "_")}`;
+    const toolName = `o3de_${command.replace(/-/g, "_")}`;
     server.registerTool(
       toolName,
       {
