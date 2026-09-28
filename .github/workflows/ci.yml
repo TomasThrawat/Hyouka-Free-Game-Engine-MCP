@@ -6,6 +6,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -25,7 +29,8 @@ jobs:
           curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
           CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
           rm -rf /tmp/godot
           mkdir -p /tmp/godot
           unzip -oq /tmp/godot.zip -d /tmp/godot
