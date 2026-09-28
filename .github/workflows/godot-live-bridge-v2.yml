@@ -8,6 +8,11 @@ on:
         default: "180"
         type: string
 
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
 concurrency:
   group: godot-live-bridge-v2
   cancel-in-progress: true
@@ -18,12 +23,15 @@ jobs:
     timeout-minutes: 355
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v7
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
+
       - name: Install Godot 4.7.2 .NET
         run: |
           set -e
@@ -32,9 +40,10 @@ jobs:
           dotnet --version
           curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
           curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
-          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\\.7\\.2-stable_mono_linux_x86_64\\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
+          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
           rm -rf /tmp/godot
           mkdir -p /tmp/godot
           unzip -oq /tmp/godot.zip -d /tmp/godot
@@ -46,6 +55,7 @@ jobs:
           chmod +x "$GODOT_BIN"
           "$GODOT_BIN" --version
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
       - name: Start bridge
         run: |
           nohup env GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT=$GITHUB_WORKSPACE python3 godot/public_bridge.py >/tmp/godot.log 2>&1 &
@@ -59,11 +69,13 @@ jobs:
           done
           test "$READY" -eq 1
           curl -fsS http://127.0.0.1:9765/selftest
+
       - name: Install cloudflared
         run: |
           curl -fL --retry 8 -o /tmp/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
           echo "77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2  /tmp/cloudflared" | sha256sum -c -
           chmod +x /tmp/cloudflared
+
       - name: Tunnel
         id: tunnel
         run: |
@@ -71,7 +83,7 @@ jobs:
           URL=""
           READY=0
           for i in $(seq 1 45); do
-            URL=$(grep -Eo 'https://[-a-z0-9]+\\.trycloudflare\\.com' /tmp/cloudflared.log | head -1 || true)
+            URL=$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true)
             if test -n "$URL" && curl -fsS "$URL/health" >/dev/null 2>&1; then
               READY=1
               break
@@ -81,6 +93,7 @@ jobs:
           test "$READY" -eq 1
           curl -fsS "$URL/health"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
+
       - name: Publish bridge URL
         env:
           URL: ${{ steps.tunnel.outputs.url }}
@@ -89,10 +102,12 @@ jobs:
           git add runtime/godot-bridge.json
           git commit -m "chore: publish live Godot bridge [skip ci]" || true
           git push
+
       - name: Keep online
         env:
           MINUTES: ${{ inputs.duration_minutes }}
         run: sleep $((MINUTES*60))
+
       - name: Clear bridge
         if: always()
         run: |

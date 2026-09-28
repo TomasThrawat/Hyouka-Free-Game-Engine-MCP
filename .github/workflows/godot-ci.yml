@@ -5,19 +5,35 @@ on:
     branches: ["main"]
   pull_request:
 
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
+
       - run: npm install
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
       - run: python3 -m py_compile godot/public_bridge.py
       - run: test -f runtime/godot-smoke-test/project.godot
+
       - name: Verify Godot .NET runtime
         run: |
           set -e
@@ -25,9 +41,10 @@ jobs:
           sudo apt-get install -y curl unzip
           curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
           curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
-          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\\.7\\.2-stable_mono_linux_x86_64\\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
+          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
           rm -rf /tmp/godot
           mkdir -p /tmp/godot
           unzip -oq /tmp/godot.zip -d /tmp/godot
@@ -39,6 +56,7 @@ jobs:
           chmod +x "$GODOT_BIN"
           "$GODOT_BIN" --version
           "$GODOT_BIN" --headless --path runtime/godot-smoke-test --editor --quit
+
       - name: Verify repository is Godot-only
         run: |
           ! grep -RniE "O3DE|o3de|Blender|blender/" app godot runtime .devcontainer README.md 2>/dev/null
