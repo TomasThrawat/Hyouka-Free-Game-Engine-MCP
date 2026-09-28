@@ -1,10 +1,6 @@
 name: Godot Verify
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+on: workflow_dispatch
 
 jobs:
   verify:
