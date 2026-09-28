@@ -18,17 +18,9 @@ jobs:
     timeout-minutes: 355
     permissions:
       contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Checkout repository
-        run: |
-          set -e
-          git config --global init.defaultBranch main
-          git clone --depth 1 --branch "$GITHUB_REF_NAME" "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" .
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@github.com"
+      - uses: actions/checkout@v7
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
