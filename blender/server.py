@@ -196,8 +196,14 @@ def render_scene(data):
     if not filename.lower().endswith(".png"):
         filename += ".png"
     target = safe_output_path(filename, "render.png")
+
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE"
+    # Workbench is deterministic and does not require GPU/display access in headless CI.
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.display.shading.light = "STUDIO"
+    scene.display.shading.color_type = "MATERIAL"
+    scene.display.shading.show_shadows = True
+    scene.display.shading.show_cavity = True
     scene.render.resolution_x = width
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100
@@ -205,7 +211,8 @@ def render_scene(data):
     scene.render.image_settings.file_format = "PNG"
     scene.camera = camera
     bpy.ops.render.render(write_still=True)
-    return {"filename": filename, "path": str(target), "size": [width, height]}
+
+    return {"filename": filename, "path": str(target), "size": [width, height], "engine": "BLENDER_WORKBENCH"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -238,11 +245,13 @@ class Handler(BaseHTTPRequestHandler):
                     "port": PORT,
                 })
                 return
+
             if url.path == "/scene/objects":
                 self.json_response(200, {
                     "objects": [object_info(o) for o in bpy.context.scene.objects]
                 })
                 return
+
             if url.path.startswith("/files/"):
                 rel = unquote(url.path[len("/files/"):])
                 target = (OUTPUT / rel).resolve()
@@ -257,6 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+
             self.json_response(404, {"error": "not_found"})
         except Exception as exc:
             self.json_response(500, {"error": type(exc).__name__, "message": str(exc)})
@@ -266,16 +276,20 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length) if length else b"{}"
             data = json.loads(raw.decode("utf-8"))
+
             if self.path == "/scene/new":
                 clear_scene()
                 self.json_response(200, {"status": "ok", "message": "scene_cleared"})
                 return
+
             if self.path == "/scene/basic":
                 self.json_response(200, {"status": "ok", **basic_scene()})
                 return
+
             if self.path == "/object/add":
                 self.json_response(200, {"status": "ok", "object": add_primitive(data)})
                 return
+
             if self.path == "/object/transform":
                 name = str(data.get("name", ""))
                 obj = bpy.data.objects.get(name)
@@ -289,6 +303,7 @@ class Handler(BaseHTTPRequestHandler):
                     obj.scale = vector3(data["scale"], (1.0, 1.0, 1.0))
                 self.json_response(200, {"status": "ok", "object": object_info(obj)})
                 return
+
             if self.path == "/object/delete":
                 name = str(data.get("name", ""))
                 obj = bpy.data.objects.get(name)
@@ -297,19 +312,23 @@ class Handler(BaseHTTPRequestHandler):
                 bpy.data.objects.remove(obj, do_unlink=True)
                 self.json_response(200, {"status": "ok", "deleted": name})
                 return
+
             if self.path == "/scene/save":
                 target = safe_output_path(data.get("filename"), "scene.blend")
                 bpy.ops.wm.save_as_mainfile(filepath=str(target))
                 self.json_response(200, {"status": "ok", "filename": target.name, "path": str(target)})
                 return
+
             if self.path == "/scene/render":
                 self.json_response(200, {"status": "ok", **render_scene(data)})
                 return
+
             if self.path == "/scene/export-glb":
                 target = safe_output_path(data.get("filename"), "scene.glb")
                 bpy.ops.export_scene.gltf(filepath=str(target), export_format="GLB", use_selection=False)
                 self.json_response(200, {"status": "ok", "filename": target.name, "path": str(target)})
                 return
+
             self.json_response(404, {"error": "not_found"})
         except Exception as exc:
             self.json_response(400, {"error": type(exc).__name__, "message": str(exc)})
