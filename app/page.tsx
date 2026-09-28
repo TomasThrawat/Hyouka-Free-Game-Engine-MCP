@@ -19,6 +19,10 @@ const commands = [
   "edit-repo-properties",
 ];
 
+function mcpToolName(command: string) {
+  return `o3de_${command.replace(/-/g, "_")}`;
+}
+
 export default function Home() {
   return (
     <main
@@ -32,7 +36,8 @@ export default function Home() {
     >
       <h1>Hyouka O3DE MCP</h1>
       <p>
-        Streamable HTTP MCP hosted on Vercel for the Open 3D Engine (O3DE).
+        Streamable HTTP MCP hosted on Vercel for the open-source Open 3D Engine
+        (O3DE).
       </p>
       <p>
         MCP endpoint: <code>/api/mcp</code>
@@ -54,7 +59,7 @@ export default function Home() {
       <ul>
         {commands.map((command) => (
           <li key={command}>
-            <code>o3de_{command.replaceAll("-", "_")}</code>
+            <code>{mcpToolName(command)}</code>
           </li>
         ))}
       </ul>
@@ -62,8 +67,8 @@ export default function Home() {
       <h2>Execution model</h2>
       <p>
         Vercel hosts the MCP protocol layer. The actual O3DE process runs in a
-        separate HTTP bridge because Vercel Functions do not provide a persistent
-        O3DE engine installation.
+        separate HTTP bridge because Vercel Functions do not provide a
+        persistent O3DE engine installation.
       </p>
     </main>
   );

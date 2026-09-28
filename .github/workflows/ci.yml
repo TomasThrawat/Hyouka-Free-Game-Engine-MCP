@@ -13,7 +13,20 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
       - run: npm install
       - run: npm run build
       - name: Validate O3DE bridge syntax
         run: python3 -m py_compile o3de/bridge.py
+      - name: Verify no legacy Blender integration
+        shell: bash
+        run: |
+          if grep -RniE 'Blender|blender/' app o3de runtime README.md .devcontainer 2>/dev/null; then
+            echo "Legacy Blender integration found"
+            exit 1
+          fi
