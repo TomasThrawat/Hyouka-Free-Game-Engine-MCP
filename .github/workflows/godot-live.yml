@@ -1,0 +1,171 @@
+name: Godot Live MCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: "How long to keep the Godot bridge online"
+        required: false
+        default: "180"
+        type: string
+
+concurrency:
+  group: godot-live-mcp
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+
+    steps:
+      - name: Configure Git defaults
+        run: git config --global init.defaultBranch main
+
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl unzip python3 jq
+
+      - name: Install Godot 4.7.2 .NET
+        run: |
+          set -e
+          curl -fL --retry 8 -o /tmp/godot.zip             https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
+          curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt             https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
+          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
+          test -n "$CHECKSUM"
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
+          rm -rf /tmp/godot
+          mkdir -p /tmp/godot
+          unzip -oq /tmp/godot.zip -d /tmp/godot
+          GODOT_DIR=$(find /tmp/godot -maxdepth 1 -type d -name 'Godot_v4.7.2-stable_mono_linux_x86_64' -print -quit)
+          test -n "$GODOT_DIR"
+          test -d "$GODOT_DIR/GodotSharp/Api/Debug"
+          GODOT_BIN=$(find "$GODOT_DIR" -maxdepth 1 -type f -name 'Godot_v4.7.2-stable_mono_linux*' -print -quit)
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          "$GODOT_BIN" --version
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Validate bridge before publish
+        run: |
+          set -e
+          python3 -m py_compile godot/public_bridge.py
+          test -f runtime/godot-smoke-test/project.godot
+          ! grep -RniE 'O3DE|o3de|Blender|blender/' app godot runtime .devcontainer README.md 2>/dev/null
+
+      - name: Start Godot bridge
+        run: |
+          set -e
+          nohup env             GODOT_BIN="$GODOT_BIN"             GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE"             GODOT_BRIDGE_HOST="127.0.0.1"             python3 godot/public_bridge.py >/tmp/godot-bridge.log 2>&1 &
+          READY=0
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:9765/health >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          test "$READY" -eq 1
+          curl -fsS http://127.0.0.1:9765/health
+          curl -fsS http://127.0.0.1:9765/selftest
+
+      - name: Install current cloudflared
+        run: |
+          set -e
+          VERSION=2026.9.3
+          curl -fsSL "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/$VERSION" -o /tmp/cloudflared-release.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/cloudflared-release.json'))
+          a=next(x for x in d['assets'] if x['name']=='cloudflared-linux-amd64')
+          print(a['browser_download_url'])
+          print(a.get('digest',''))
+          PY
+          URL=$(python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/cloudflared-release.json'))
+          print(next(x['browser_download_url'] for x in d['assets'] if x['name']=='cloudflared-linux-amd64'))
+          PY
+          DIGEST=$(python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/cloudflared-release.json'))
+          print((next(x for x in d['assets'] if x['name']=='cloudflared-linux-amd64').get('digest') or '').split(':',1)[-1])
+          PY
+          )
+          test -n "$DIGEST"
+          curl -fL --retry 8 -o /tmp/cloudflared "$URL"
+          printf '%s  /tmp/cloudflared
+' "$DIGEST" | sha256sum -c -
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared --version
+
+      - name: Start public tunnel
+        id: tunnel
+        run: |
+          set -e
+          nohup /tmp/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9765 >/tmp/cloudflared.log 2>&1 &
+          URL=""
+          READY=0
+          for i in $(seq 1 60); do
+            URL=$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true)
+            if test -n "$URL" && curl -fsS "$URL/health" >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 2
+          done
+          test "$READY" -eq 1
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Tunnel is ready"
+
+      - name: Publish live bridge metadata
+        env:
+          URL: ${{ steps.tunnel.outputs.url }}
+          DURATION: ${{ inputs.duration_minutes }}
+        run: |
+          set -e
+          jq -n             --arg url "$URL"             --arg duration "$DURATION"             '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration}'             > runtime/godot-bridge.json
+          git add runtime/godot-bridge.json
+          git commit -m "chore: publish live Godot MCP bridge [skip ci]"
+          git push
+
+      - name: Verify public bridge
+        env:
+          URL: ${{ steps.tunnel.outputs.url }}
+        run: |
+          set -e
+          curl -fsS "$URL/health"
+          curl -fsS "$URL/discover" | jq '.status, .engine, (.tools | length)'
+          curl -fsS "$URL/selftest" | jq '.status, .smokeTest.status'
+
+      - name: Keep bridge online
+        env:
+          MINUTES: ${{ inputs.duration_minutes }}
+        run: |
+          set -e
+          case "$MINUTES" in
+            ''|*[!0-9]*) exit 1 ;;
+          esac
+          test "$MINUTES" -ge 1
+          test "$MINUTES" -le 300
+          sleep $((MINUTES*60))
+
+      - name: Clear bridge metadata
+        if: always()
+        run: |
+          jq -n             '{status:"not_configured",engine:"Godot",url:"",runtime:"Godot 4.7.2-stable .NET"}'             > runtime/godot-bridge.json
+          git add runtime/godot-bridge.json
+          git commit -m "chore: clear live Godot MCP bridge [skip ci]" || true
+          git push || true
