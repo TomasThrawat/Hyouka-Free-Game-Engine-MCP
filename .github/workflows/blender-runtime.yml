@@ -30,8 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl libegl1 libgl1
           blender --version | head -n 3
+          ldconfig -p | grep -E 'libEGL\.so\.1|libGL\.so\.1'
 
       - name: Install cloudflared
         shell: bash
@@ -85,6 +86,9 @@ jobs:
 
           test -s blender_output/ci-test.glb
 
+          echo "Smoke test artifacts:"
+          ls -lh blender_output/ci-test.png blender_output/ci-test.glb /tmp/ci-test-download.png
+
       - name: Start Cloudflare Quick Tunnel
         shell: bash
         run: |
@@ -93,7 +97,7 @@ jobs:
           echo $! > /tmp/hyouka-cloudflared.pid
 
           for i in $(seq 1 60); do
-            TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+.trycloudflare.com' /tmp/hyouka-cloudflared.log | head -n 1 || true)"
+            TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -n 1 || true)"
             if [ -n "$TUNNEL_URL" ]; then
               echo "TUNNEL_URL=$TUNNEL_URL" >> "$GITHUB_ENV"
               echo "$TUNNEL_URL"
