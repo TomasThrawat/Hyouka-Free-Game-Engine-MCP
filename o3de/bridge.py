@@ -598,10 +598,9 @@ def inventory():
 
 
 def self_test():
-    index = tool_index()
-    bridge_id = f"py:{slugify(engine_relative(Path(__file__)))}"
-    if bridge_id not in index:
-        raise AssertionError("bridge discovery failed")
+    commands = discover_top_level_commands()
+    if "get-global-project" not in commands:
+        raise AssertionError("top-level command discovery fallback failed")
 
     validate_args(["--ok", "value"])
     try:
