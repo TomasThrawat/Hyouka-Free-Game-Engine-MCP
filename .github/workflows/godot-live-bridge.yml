@@ -17,16 +17,26 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - name: Install Godot 4.7.2
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Godot 4.7.2 .NET
         run: |
           set -e
           sudo apt-get update
           sudo apt-get install -y curl unzip python3 jq
-          curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
-          echo "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4  /tmp/godot.zip" | sha256sum -c -
+          dotnet --version
+          curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
+          curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
+          CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
+          test -n "$CHECKSUM"
+          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
           mkdir -p /tmp/godot
           unzip -oq /tmp/godot.zip -d /tmp/godot
-          mv /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 /tmp/godot/godot
+          GODOT_EXEC=$(find /tmp/godot -maxdepth 2 -type f -name 'Godot_v4.7.2-stable_mono_linux*' -print -quit)
+          test -n "$GODOT_EXEC"
+          mv "$GODOT_EXEC" /tmp/godot/godot
           chmod +x /tmp/godot/godot
           /tmp/godot/godot --version
       - name: Start bridge
@@ -51,7 +61,7 @@ jobs:
         env:
           URL: ${{ steps.tunnel.outputs.url }}
         run: |
-          jq -n --arg url "$URL" '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable Linux x86_64",source:"https://github.com/godotengine/godot"}' > runtime/godot-bridge.json
+          jq -n --arg url "$URL" '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot"}' > runtime/godot-bridge.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@github.com"
           git add runtime/godot-bridge.json
@@ -64,7 +74,7 @@ jobs:
       - name: Clear bridge
         if: always()
         run: |
-          jq -n '{status:"not_configured",engine:"Godot",url:"",runtime:"Godot 4.7.2-stable"}' > runtime/godot-bridge.json
+          jq -n '{status:"not_configured",engine:"Godot",url:"",runtime:"Godot 4.7.2-stable .NET"}' > runtime/godot-bridge.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@github.com"
           git add runtime/godot-bridge.json
