@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: free-blender-runtime
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -91,12 +91,13 @@ jobs:
           test -s blender_output/ci-test.blend
 
           echo "Smoke test artifacts:"
-          ls -lh blender_output/ci-test.png blender_output/ci-test.glb blender_output/ci-test.blend /tmp/ci-test-download.png
+          ls -lh             blender_output/ci-test.png             blender_output/ci-test.glb             blender_output/ci-test.blend             /tmp/ci-test-download.png
 
       - name: Start Cloudflare Quick Tunnel
         shell: bash
         run: |
           set -euo pipefail
+
           nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9765 > /tmp/hyouka-cloudflared.log 2>&1 &
           echo $! > /tmp/hyouka-cloudflared.pid
 
@@ -135,8 +136,10 @@ jobs:
           set -euo pipefail
 
           python3 - "$TUNNEL_URL" > runtime/blender-bridge.json <<'PY'
-          import json, sys
+          import json
+          import sys
           from datetime import datetime, timezone
+
           print(json.dumps({
               "status": "ok",
               "engine": "Blender",
@@ -145,7 +148,7 @@ jobs:
               "transport": "http",
               "runtime": "GitHub Actions public runner",
               "policy": "free-only-no-pc",
-              "notes": "Temporary Cloudflare Quick Tunnel for development/testing."
+              "notes": "Auto-renewed free Blender runtime. The public URL rotates automatically."
           }, indent=2))
           PY
 
@@ -159,7 +162,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Free Blender runtime is live at $TUNNEL_URL"
+          echo "Free Blender runtime is live at $TUNNEL_URL (run $GITHUB_RUN_ID)"
           while true; do
             sleep 300
           done
