@@ -3,6 +3,17 @@
   "engine": "O3DE",
   "url": "",
   "transport": "http",
+  "tokenRequired": false,
+  "capabilities": [
+    "dynamic tool discovery",
+    "Python script execution",
+    "shell script execution",
+    "built executable execution",
+    "top-level O3DE CLI",
+    "CMake target build/invocation",
+    "background process control",
+    "help probing"
+  ],
   "runtime": "external O3DE bridge",
-  "notes": "Set O3DE_BRIDGE_URL or replace this runtime manifest with a reachable HTTPS bridge URL."
+  "notes": "Set O3DE_BRIDGE_URL to a reachable HTTPS bridge. Set O3DE_BRIDGE_TOKEN on both Vercel and the bridge when the bridge is exposed publicly."
 }
