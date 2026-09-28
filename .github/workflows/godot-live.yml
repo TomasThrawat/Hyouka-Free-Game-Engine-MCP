@@ -12,6 +12,11 @@ on:
         required: false
         default: "300"
         type: string
+      handoff_after_minutes:
+        description: "Minutes before successor handoff"
+        required: false
+        default: "240"
+        type: string
 
 permissions:
   actions: write
@@ -132,14 +137,23 @@ jobs:
           DURATION: ${{ inputs.duration_minutes || '10' }}
         run: |
           set -e
-          jq -n             --arg url "$URL"             --arg duration "$DURATION"             --arg run "$GITHUB_RUN_ID"             '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration,ownerRunId:$run}'             > runtime/godot-bridge.json
-          git add runtime/godot-bridge.json
-          if git diff --cached --quiet; then
-            echo "Metadata unchanged; nothing to commit."
-            exit 0
-          fi
-          git commit -m "chore: publish live Godot MCP bridge [skip ci]"
-          git push
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            jq -n               --arg url "$URL"               --arg duration "$DURATION"               --arg run "$GITHUB_RUN_ID"               '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration,ownerRunId:$run}'               > runtime/godot-bridge.json
+            git add runtime/godot-bridge.json
+            if git diff --cached --quiet; then
+              echo "Metadata unchanged."
+              exit 0
+            fi
+            git commit -m "chore: publish live Godot MCP bridge [skip ci]"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git reset --hard origin/main
+            sleep 2
+          done
+          exit 1
 
       - name: Verify public bridge
         env:
@@ -155,6 +169,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_EVENT: ${{ github.event_name }}
           INPUT_MINUTES: ${{ inputs.duration_minutes }}
+          INPUT_HANDOFF: ${{ inputs.handoff_after_minutes }}
         run: |
           set -e
           if [ "$RUN_EVENT" = "push" ]; then
@@ -164,11 +179,16 @@ jobs:
             case "$INPUT_MINUTES" in
               ''|*[!0-9]*) exit 1 ;;
             esac
-            test "$INPUT_MINUTES" -ge 60
+            case "$INPUT_HANDOFF" in
+              ''|*[!0-9]*) exit 1 ;;
+            esac
+            test "$INPUT_MINUTES" -ge 2
             test "$INPUT_MINUTES" -le 300
-            NEXT_MINUTES="$INPUT_MINUTES"
-            HANDOFF_MINUTES=$((NEXT_MINUTES-60))
+            test "$INPUT_HANDOFF" -ge 1
+            test "$INPUT_HANDOFF" -lt "$INPUT_MINUTES"
+            NEXT_MINUTES=300
+            HANDOFF_MINUTES="$INPUT_HANDOFF"
           fi
           sleep $((HANDOFF_MINUTES*60))
-          curl -fsSL -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/godot-live.yml/dispatches"             -d "{\"ref\":\"main\",\"inputs\":{\"duration_minutes\":\"$NEXT_MINUTES\"}}"
+          curl -fsSL -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/godot-live.yml/dispatches"             -d "{\"ref\":\"main\",\"inputs\":{\"duration_minutes\":\"$NEXT_MINUTES\",\"handoff_after_minutes\":\"240\"}}"
           echo "Successor workflow dispatched: $NEXT_MINUTES minutes"
