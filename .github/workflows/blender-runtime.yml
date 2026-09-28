@@ -1,0 +1,144 @@
+name: Free Blender Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "blender/**"
+      - "app/api/mcp/**"
+      - ".github/workflows/blender-runtime.yml"
+      - ".devcontainer/**"
+
+concurrency:
+  group: free-blender-runtime
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  blender:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl python3
+          blender --version | head -n 3
+
+      - name: Install cloudflared
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH="$(dpkg --print-architecture)"
+          case "$ARCH" in
+            amd64) ASSET="cloudflared-linux-amd64" ;;
+            arm64) ASSET="cloudflared-linux-arm64" ;;
+            *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+          esac
+
+          URL="$(curl -fsSL https://api.github.com/repos/cloudflare/cloudflared/releases/latest             | python3 -c 'import json,sys; d=json.load(sys.stdin); n=sys.argv[1]; print(next(a["browser_download_url"] for a in d["assets"] if a["name"] == n))' "$ASSET")"
+
+          sudo install -m 0755 <(curl -fsSL "$URL") /usr/local/bin/cloudflared
+          cloudflared --version
+
+      - name: Start Blender bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p blender_output runtime
+
+          nohup blender --background --python blender/server.py > /tmp/hyouka-blender.log 2>&1 &
+          echo $! > /tmp/hyouka-blender.pid
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9765/health >/tmp/blender-health.json; then
+              cat /tmp/blender-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Blender failed to start"
+          cat /tmp/hyouka-blender.log
+          exit 1
+
+      - name: Start Cloudflare Quick Tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9765 > /tmp/hyouka-cloudflared.log 2>&1 &
+          echo $! > /tmp/hyouka-cloudflared.pid
+
+          for i in $(seq 1 60); do
+            TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -n 1 || true)"
+            if [ -n "$TUNNEL_URL" ]; then
+              echo "TUNNEL_URL=$TUNNEL_URL" >> "$GITHUB_ENV"
+              echo "$TUNNEL_URL"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Cloudflare Quick Tunnel URL was not detected"
+          cat /tmp/hyouka-cloudflared.log
+          exit 1
+
+      - name: Verify public bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS "$TUNNEL_URL/health"; then
+              echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Public tunnel health check failed"
+          cat /tmp/hyouka-cloudflared.log
+          exit 1
+
+      - name: Publish live tunnel URL
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - "$TUNNEL_URL" > runtime/blender-bridge.json <<'PY'
+          import json, sys
+          print(json.dumps({
+              "status": "ok",
+              "engine": "Blender",
+              "url": sys.argv[1],
+              "createdAt": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+              "transport": "http",
+              "runtime": "GitHub Actions public runner",
+              "policy": "free-only-no-pc",
+              "notes": "Temporary Cloudflare Quick Tunnel for development/testing."
+          }, indent=2))
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/blender-bridge.json
+          git commit -m "chore: publish live Blender runtime URL" || exit 0
+          git push
+
+      - name: Keep runtime alive
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Free Blender runtime is live at $TUNNEL_URL"
+          echo "This public GitHub Actions runner will terminate at the workflow timeout or on cancellation."
+          while true; do
+            sleep 300
+          done

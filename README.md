@@ -7,7 +7,7 @@ No-PC, free-only game-engine MCP stack.
 Android / ChatGPT
 -> Composio
 -> Vercel Streamable HTTP MCP
--> GitHub Codespaces
+-> GitHub Actions standard public runner
 -> headless Blender
 -> Cloudflare Quick Tunnel
 -> Blender HTTP bridge
@@ -17,36 +17,20 @@ Browser-native editors remain available:
 - GDevelop: https://editor.gdevelop.io/
 - Construct 3: https://editor.construct.net/
 
-## Blender backend
+## Free Blender runtime
 
-The repository includes a minimal Blender HTTP bridge in `blender/server.py`.
+The repository runs Blender headlessly on a standard GitHub-hosted runner in a public repository. GitHub currently documents standard runners for public repositories as free and unlimited. The runtime job is intentionally capped below GitHub's six-hour hosted-job limit and uses a normal `ubuntu-latest` runner, not a larger billed runner.
 
-Supported operations:
-- health check
-- clear scene
-- create a basic game-style scene
-- list objects
-- add / transform / delete primitives
-- save `.blend`
-- CPU/Eevee PNG render
-- GLB export
-- artifact download
+The workflow starts:
+1. Blender headless on port 9765.
+2. A Cloudflare Quick Tunnel exposing the HTTP bridge.
+3. A public runtime heartbeat file at `runtime/blender-bridge.json`.
 
-## Fully-free remote access
+The Vercel MCP reads that heartbeat file dynamically, so the live tunnel URL is discovered without manually editing Vercel configuration.
 
-GitHub Codespaces runs Blender headlessly on CPU.
+Cloudflare Quick Tunnels are free, require no Cloudflare account, generate a random `trycloudflare.com` URL, and are intended for development/testing. They have a 200 in-flight request limit and do not support SSE. This Blender bridge is plain HTTP JSON, so the SSE limitation does not apply to it.
 
-GitHub port forwarding is not used for the Blender bridge. Instead, the Codespace starts a Cloudflare Quick Tunnel:
-`cloudflared tunnel --url http://127.0.0.1:9765`
-
-Cloudflare documents Quick Tunnels as free, temporary, no-account tunnels that generate a random `trycloudflare.com` URL. They are intended for development/testing and have a 200 in-flight request limit; they also do not support SSE. The Blender bridge is plain HTTP, so the SSE limitation does not affect the bridge transport. See https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/
-
-On every Codespace start, the tunnel URL is written to:
-`runtime/blender-bridge.json`
-
-The Vercel MCP reads that public GitHub JSON dynamically, so no manual URL update is required after a Codespace restart.
-
-## MCP tools
+## Blender MCP tools
 
 - `blender_status`
 - `blender_new_scene`
@@ -59,19 +43,18 @@ The Vercel MCP reads that public GitHub JSON dynamically, so no manual URL updat
 - `blender_render`
 - `blender_export_glb`
 
-## Free-only policy
+The bridge intentionally does not expose arbitrary remote Python execution.
 
-No paid GPU cloud.
-No paid AI API.
-No Vercel paid plan.
-No Cloudflare account or paid tunnel.
-No paid Codespaces overage.
-No Unity/Unreal cloud editor runtime.
+## Free-only boundaries
 
-GitHub Codespaces has a free quota; when it is exhausted, usage must stop rather than using paid overage.
+This repository does not depend on:
+- paid GPU cloud
+- paid AI APIs
+- Vercel paid plan
+- Cloudflare paid tunnels
+- GitHub Actions paid overage
+- Unity/Unreal cloud editor runtime
 
-## Important
+The GitHub repository is public, so standard GitHub-hosted Actions runners are free. The workflow uses the standard runner only. GitHub documents that standard runners in public repositories are free and unlimited, while larger runners are billed.
 
-Quick Tunnels are temporary and have no uptime guarantee. They are a development/testing transport, not a production SLA.
-
-The Blender bridge intentionally exposes only constrained scene operations and does not expose arbitrary remote Python execution.
+The runtime is temporary: GitHub-hosted workflow jobs have a finite maximum duration, and Cloudflare Quick Tunnels have no uptime/SLA guarantee. The system is therefore a free development/testing runtime, not a persistent production server.

@@ -2,7 +2,11 @@ name: Build MCP
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "runtime/blender-bridge.json"
   pull_request:
+    paths-ignore:
+      - "runtime/blender-bridge.json"
 jobs:
   build:
     runs-on: ubuntu-latest
