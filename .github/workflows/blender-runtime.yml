@@ -64,6 +64,30 @@ jobs:
           cat /tmp/hyouka-blender.log
           exit 1
 
+      - name: Local Blender scene smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "POST /scene/basic"
+          curl -v --fail-with-body -X POST             -H "Content-Type: application/json"             --data '{}'             http://127.0.0.1:9765/scene/basic
+
+          echo
+          echo "GET /scene/objects"
+          curl -v --fail-with-body http://127.0.0.1:9765/scene/objects
+
+          echo
+          echo "POST /scene/render"
+          curl -v --fail-with-body -X POST             -H "Content-Type: application/json"             --data '{"filename":"ci-test.png","width":320,"height":180}'             http://127.0.0.1:9765/scene/render
+
+          echo
+          echo "GET /files/ci-test.png"
+          curl -I --fail-with-body http://127.0.0.1:9765/files/ci-test.png
+
+          echo
+          echo "Blender log after local scene smoke test:"
+          cat /tmp/hyouka-blender.log
+
       - name: Start Cloudflare Quick Tunnel
         shell: bash
         run: |
@@ -72,7 +96,7 @@ jobs:
           echo $! > /tmp/hyouka-cloudflared.pid
 
           for i in $(seq 1 60); do
-            TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -n 1 || true)"
+            TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare.com' /tmp/hyouka-cloudflared.log | head -n 1 || true)"
             if [ -n "$TUNNEL_URL" ]; then
               echo "TUNNEL_URL=$TUNNEL_URL" >> "$GITHUB_ENV"
               echo "$TUNNEL_URL"
