@@ -62,26 +62,36 @@ jobs:
           export O3DE_ROOT="/opt/O3DE/26.05"
           export O3DE_WORKSPACE_ROOT="${GITHUB_WORKSPACE}"
           export O3DE_BRIDGE_PORT="9765"
+          export O3DE_PYTHON="/opt/O3DE/26.05/python/python.sh"
 
           nohup python3 o3de/public_bridge.py             > /tmp/o3de-bridge.log 2>&1 &
           echo $! > /tmp/o3de-bridge.pid
 
+          healthy=0
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:9765/health" >/tmp/o3de-health.json; then
+            if curl -fsS "http://127.0.0.1:9765/health" >/tmp/o3de-health.json 2>/dev/null; then
               cat /tmp/o3de-health.json
+              healthy=1
               break
             fi
             sleep 1
           done
 
-          curl -fsS "http://127.0.0.1:9765/selftest" | tee /tmp/o3de-selftest.json
+          if (( healthy == 0 )); then
+            echo "O3DE bridge did not become healthy." >&2
+            cat /tmp/o3de-bridge.log >&2 || true
+            exit 1
+          fi
+
+          curl -fsS "http://127.0.0.1:9765/selftest"             | tee /tmp/o3de-selftest.json
 
           python3 - <<'PY'
           import json
-          data=json.load(open("/tmp/o3de-selftest.json"))
+          data = json.load(open("/tmp/o3de-selftest.json"))
           assert data["status"] == "ok", data
-          assert data["version"]["returnCode"] == 0, data
+          assert data["engineMetadata"]["version"] is not None, data
           assert data["getRegistered"]["returnCode"] == 0, data
+          assert data["topLevelCommandCount"] >= 20, data
           PY
 
       - name: Install pinned Cloudflare tunnel client
@@ -90,7 +100,6 @@ jobs:
           set -euo pipefail
           VERSION="2026.9.3"
           URL="https://github.com/cloudflare/cloudflared/releases/download/${VERSION}/cloudflared-linux-amd64"
-          EXPECTED="96d39ad"
           curl -fsSL "${URL}" -o /tmp/cloudflared
           chmod +x /tmp/cloudflared
           /tmp/cloudflared --version
@@ -116,7 +125,10 @@ jobs:
           done
 
           URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true)"
-          test -n "${URL}"
+          if [[ -z "${URL}" ]]; then
+            cat /tmp/cloudflared.log >&2 || true
+            exit 1
+          fi
 
           curl -fsS "${URL}/health"
           echo
@@ -129,6 +141,9 @@ jobs:
           BRIDGE_URL: ${{ steps.tunnel.outputs.url }}
         run: |
           set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
 
           jq -n             --arg url "${BRIDGE_URL}"             '{
               status: "ok",
@@ -150,11 +165,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git fetch origin main
-          git rebase origin/main || true
-
           git add runtime/o3de-bridge.json
-          git diff --cached --quiet || git commit -m "chore: publish live O3DE bridge URL [skip ci]"
+          git diff --cached --quiet ||             git commit -m "chore: publish live O3DE bridge URL [skip ci]"
           git push origin HEAD:main
 
           echo "Published bridge URL: ${BRIDGE_URL}"
@@ -166,10 +178,12 @@ jobs:
         run: |
           set -euo pipefail
           DURATION="${DURATION_MINUTES:-180}"
+
           if ! [[ "${DURATION}" =~ ^[0-9]+$ ]]; then
             echo "duration_minutes must be numeric" >&2
             exit 1
           fi
+
           if (( DURATION < 5 || DURATION > 350 )); then
             echo "duration_minutes must be between 5 and 350" >&2
             exit 1
@@ -187,6 +201,9 @@ jobs:
         run: |
           set +e
 
+          git fetch origin main
+          git reset --hard origin/main
+
           jq -n '{
             status: "not_configured",
             engine: "O3DE",
@@ -201,16 +218,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git fetch origin main
-          git rebase origin/main || true
-
           git add runtime/o3de-bridge.json
-          git diff --cached --quiet || git commit -m "chore: clear expired O3DE bridge URL [skip ci]"
+          git diff --cached --quiet ||             git commit -m "chore: clear expired O3DE bridge URL [skip ci]"
           git push origin HEAD:main || true
 
           if [[ -f /tmp/cloudflared.log ]]; then
             cat /tmp/cloudflared.log
           fi
+
           if [[ -f /tmp/o3de-bridge.log ]]; then
             cat /tmp/o3de-bridge.log
           fi

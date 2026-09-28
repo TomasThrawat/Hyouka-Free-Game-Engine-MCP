@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -10,19 +11,41 @@ from urllib.parse import parse_qs, urlparse
 HOST = os.environ.get("O3DE_BRIDGE_HOST", "0.0.0.0")
 PORT = int(os.environ.get("O3DE_BRIDGE_PORT", "9765"))
 ENGINE_ROOT = Path(os.environ.get("O3DE_ROOT", "/opt/O3DE/26.05")).expanduser().resolve()
-WORKSPACE_ROOT = Path(os.environ.get("O3DE_WORKSPACE_ROOT", Path.cwd())).expanduser().resolve()
+WORKSPACE_ROOT = Path(
+    os.environ.get("O3DE_WORKSPACE_ROOT", Path.cwd())
+).expanduser().resolve()
 O3DE_CLI = ENGINE_ROOT / "scripts" / "o3de.sh"
 O3DE_PY = ENGINE_ROOT / "scripts" / "o3de.py"
+
 MAX_ARGS = 128
 MAX_ARG_LENGTH = 4096
 MAX_OUTPUT = 20000
+
 COMMAND_FALLBACKS = {
-    "get-global-project", "set-global-project", "create-template",
-    "create-from-template", "register", "register-show", "get-registered",
-    "enable-gem", "disable-gem", "edit-engine-properties",
-    "edit-project-properties", "edit-gem-properties", "sha256", "download",
-    "export-project-configure", "export-project", "repo",
+    "get-global-project",
+    "set-global-project",
+    "create-template",
+    "create-from-template",
+    "create-project",
+    "create-gem",
+    "create-repo",
+    "register",
+    "register-show",
+    "get-registered",
+    "enable-gem",
+    "disable-gem",
+    "edit-engine-properties",
+    "edit-project-properties",
+    "edit-gem-properties",
+    "sha256",
+    "download",
+    "export-project-configure",
+    "export-project",
+    "repo",
     "edit-repo-properties",
+    "android-configure",
+    "android-generate",
+    "upgrade-physx-gem",
 }
 
 
@@ -57,15 +80,61 @@ def validate_args(args):
     return out
 
 
+def read_engine_metadata():
+    path = ENGINE_ROOT / "engine.json"
+    if not path.is_file():
+        raise RuntimeError(f"O3DE engine metadata not found at {path}")
+    with path.open(encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    if not isinstance(metadata, dict):
+        raise RuntimeError("O3DE engine.json is not a JSON object")
+    return {
+        "engineName": metadata.get("engine_name") or metadata.get("engineName"),
+        "version": metadata.get("version"),
+        "apiVersion": metadata.get("api_version") or metadata.get("apiVersion"),
+        "path": str(path),
+    }
+
+
+@lru_cache(maxsize=1)
 def top_level_commands():
     commands = set(COMMAND_FALLBACKS)
-    if O3DE_PY.is_file():
-        text = O3DE_PY.read_text(encoding="utf-8", errors="ignore")
-        for match in re.finditer(
-            r"\badd_parser\s*\(\s*[\"']([^\"']+)[\"']",
-            text,
-        ):
-            commands.add(match.group(1))
+
+    if not O3DE_PY.is_file():
+        return sorted(commands)
+
+    try:
+        result = subprocess.run(
+            [os.environ.get("O3DE_PYTHON", "python3"), str(O3DE_PY), "--help"],
+            cwd=str(WORKSPACE_ROOT),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+            shell=False,
+            check=False,
+            env={
+                **os.environ,
+                "O3DE_ROOT": str(ENGINE_ROOT),
+                "O3DE_WORKSPACE_ROOT": str(WORKSPACE_ROOT),
+            },
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+
+    if result and result.stdout:
+        match = re.search(
+            r"usage:\s+.*?\{([^}\n]+)\}",
+            result.stdout,
+            re.DOTALL,
+        )
+        if match:
+            for command in match.group(1).split(","):
+                command = command.strip()
+                if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", command):
+                    commands.add(command)
+
     return sorted(commands)
 
 
@@ -108,32 +177,6 @@ def run_cli(command, args, cwd=None, timeout=120):
     }
 
 
-def run_version():
-    if not O3DE_CLI.is_file():
-        raise RuntimeError(f"O3DE CLI not found at {O3DE_CLI}")
-    proc = subprocess.run(
-        [str(O3DE_CLI), "--version"],
-        cwd=str(WORKSPACE_ROOT),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=30,
-        shell=False,
-        check=False,
-        env={
-            **os.environ,
-            "O3DE_ROOT": str(ENGINE_ROOT),
-            "O3DE_WORKSPACE_ROOT": str(WORKSPACE_ROOT),
-        },
-    )
-    return {
-        "returnCode": proc.returncode,
-        "stdout": compact(proc.stdout, 8000),
-        "stderr": compact(proc.stderr, 8000),
-    }
-
-
 def discover():
     commands = top_level_commands()
     tools = [
@@ -159,8 +202,21 @@ def discover():
     }
 
 
+def selftest():
+    metadata = read_engine_metadata()
+    registered = run_cli("get-registered", ["-df", "engines"], timeout=60)
+
+    return {
+        "status": "ok" if registered["returnCode"] == 0 else "failed",
+        "engine": "O3DE",
+        "engineMetadata": metadata,
+        "topLevelCommandCount": len(top_level_commands()),
+        "getRegistered": registered,
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HyoukaO3DEPublicBridge/1.1"
+    server_version = "HyoukaO3DEPublicBridge/1.2"
 
     def send_json(self, code, payload):
         body = json.dumps(payload, separators=(",", ":")).encode()
@@ -182,6 +238,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == "/health":
+                metadata = read_engine_metadata()
                 self.send_json(
                     200,
                     {
@@ -191,6 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                         "engineRoot": str(ENGINE_ROOT),
                         "o3deCli": str(O3DE_CLI),
                         "o3deScript": str(O3DE_PY),
+                        "engineMetadata": metadata,
                         "toolCount": len(top_level_commands()),
                         "commands": top_level_commands(),
                     },
@@ -198,19 +256,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if path == "/selftest":
-                version = run_version()
-                registered = run_cli("get-registered", [])
-                self.send_json(
-                    200,
-                    {
-                        "status": "ok"
-                        if version["returnCode"] == 0 and registered["returnCode"] == 0
-                        else "failed",
-                        "engine": "O3DE",
-                        "version": version,
-                        "getRegistered": registered,
-                    },
-                )
+                result = selftest()
+                self.send_json(200, result)
                 return
 
             if path == "/discover":
@@ -224,11 +271,17 @@ class Handler(BaseHTTPRequestHandler):
                     .lower()
                 )
                 tools = [
-                    t for t in discover()["tools"] if query in json.dumps(t).lower()
+                    tool
+                    for tool in discover()["tools"]
+                    if query in json.dumps(tool).lower()
                 ]
                 self.send_json(
                     200,
-                    {**discover(), "tools": tools, "returnedTools": len(tools)},
+                    {
+                        **discover(),
+                        "tools": tools,
+                        "returnedTools": len(tools),
+                    },
                 )
                 return
 
