@@ -4,18 +4,7 @@
   "url": "",
   "transport": "http",
   "tokenRequired": false,
-  "capabilities": [
-    "dynamic top-level CLI discovery",
-    "Python tool discovery and execution",
-    "shell script discovery and execution",
-    "built executable discovery and execution",
-    "CMake executable/custom target discovery and execution",
-    "CTest discovery and execution",
-    "help probing",
-    "tool search/filtering",
-    "background process control",
-    "CMake builds"
-  ],
-  "runtime": "external O3DE universal bridge",
-  "notes": "Set O3DE_BRIDGE_URL to a reachable HTTPS bridge and O3DE_BRIDGE_TOKEN on both sides when the bridge is publicly exposed."
+  "mode": "public-cli-only",
+  "runtime": "no active bridge",
+  "notes": "Dispatch the O3DE Live Bridge workflow to start a temporary live runtime."
 }
