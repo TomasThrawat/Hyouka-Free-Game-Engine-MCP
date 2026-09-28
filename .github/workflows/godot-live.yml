@@ -1,6 +1,8 @@
 name: Godot Live MCP
 
 on:
+  push:
+    branches: ["main"]
   workflow_dispatch:
     inputs:
       duration_minutes:
@@ -44,8 +46,7 @@ jobs:
           curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt             https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
           CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip
-' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
           rm -rf /tmp/godot
           mkdir -p /tmp/godot
           unzip -oq /tmp/godot.zip -d /tmp/godot
@@ -86,18 +87,12 @@ jobs:
           set -e
           VERSION=2026.9.3
           curl -fsSL "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/$VERSION" -o /tmp/cloudflared-release.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('/tmp/cloudflared-release.json'))
-          a=next(x for x in d['assets'] if x['name']=='cloudflared-linux-amd64')
-          print(a['browser_download_url'])
-          print(a.get('digest',''))
-          PY
           URL=$(python3 - <<'PY'
           import json
           d=json.load(open('/tmp/cloudflared-release.json'))
           print(next(x['browser_download_url'] for x in d['assets'] if x['name']=='cloudflared-linux-amd64'))
           PY
+          )
           DIGEST=$(python3 - <<'PY'
           import json
           d=json.load(open('/tmp/cloudflared-release.json'))
@@ -106,8 +101,7 @@ jobs:
           )
           test -n "$DIGEST"
           curl -fL --retry 8 -o /tmp/cloudflared "$URL"
-          printf '%s  /tmp/cloudflared
-' "$DIGEST" | sha256sum -c -
+          printf '%s  /tmp/cloudflared\n' "$DIGEST" | sha256sum -c -
           chmod +x /tmp/cloudflared
           /tmp/cloudflared --version
 
@@ -133,7 +127,7 @@ jobs:
       - name: Publish live bridge metadata
         env:
           URL: ${{ steps.tunnel.outputs.url }}
-          DURATION: ${{ inputs.duration_minutes }}
+          DURATION: ${{ inputs.duration_minutes || '180' }}
         run: |
           set -e
           jq -n             --arg url "$URL"             --arg duration "$DURATION"             '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration}'             > runtime/godot-bridge.json
@@ -152,7 +146,7 @@ jobs:
 
       - name: Keep bridge online
         env:
-          MINUTES: ${{ inputs.duration_minutes }}
+          MINUTES: ${{ inputs.duration_minutes || '180' }}
         run: |
           set -e
           case "$MINUTES" in
