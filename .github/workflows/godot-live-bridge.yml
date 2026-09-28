@@ -15,6 +15,10 @@ jobs:
     timeout-minutes: 355
     permissions:
       contents: write
+    env:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
     steps:
       - uses: actions/checkout@v7
       - name: Setup .NET SDK
@@ -31,7 +35,8 @@ jobs:
           curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
           CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
           rm -rf /tmp/godot
           mkdir -p /tmp/godot
           unzip -oq /tmp/godot.zip -d /tmp/godot
@@ -46,7 +51,15 @@ jobs:
       - name: Start bridge
         run: |
           nohup env GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT=$GITHUB_WORKSPACE python3 godot/public_bridge.py >/tmp/godot.log 2>&1 &
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9765/health && break || sleep 1; done
+          READY=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9765/health >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          test "$READY" -eq 1
           curl -fsS http://127.0.0.1:9765/selftest
       - name: Install cloudflared
         run: |
@@ -57,16 +70,17 @@ jobs:
         id: tunnel
         run: |
           nohup /tmp/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9765 >/tmp/cloudflared.log 2>&1 &
+          URL=""
+          READY=0
           for i in $(seq 1 45); do
             URL=$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true)
-            if test -n "$URL"; then
-              if curl -fsS "$URL/health" >/dev/null; then
-                break
-              fi
+            if test -n "$URL" && curl -fsS "$URL/health" >/dev/null 2>&1; then
+              READY=1
+              break
             fi
             sleep 2
           done
-          test -n "$URL"
+          test "$READY" -eq 1
           curl -fsS "$URL/health"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
       - name: Publish bridge URL
