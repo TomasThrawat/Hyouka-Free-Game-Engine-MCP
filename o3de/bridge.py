@@ -27,7 +27,7 @@ BUILD_ROOT = Path(
 ).expanduser().resolve()
 BRIDGE_TOKEN = os.environ.get("O3DE_BRIDGE_TOKEN", "").strip()
 
-TOP_LEVEL_COMMANDS = {
+TOP_LEVEL_FALLBACKS = {
     "get-global-project",
     "set-global-project",
     "create-template",
@@ -70,9 +70,11 @@ EXCLUDED_PARTS = {
     "Cache",
     "CacheFiles",
     "Intermediate",
+    "Downloads",
+    ".vs",
 }
 
-MAX_DISCOVERED_TOOLS = 1000
+MAX_DISCOVERED_TOOLS = 2000
 MAX_HELP_OUTPUT = 16000
 MAX_RESULT_OUTPUT = 20000
 MAX_ARGS = 128
@@ -93,22 +95,7 @@ def is_relative_to(path, root):
         return False
 
 
-def inside_engine(path):
-    return is_relative_to(path.resolve(), ENGINE_ROOT)
-
-
-def safe_workspace_path(value):
-    if not value:
-        return WORKSPACE_ROOT
-    candidate = Path(value).expanduser().resolve()
-    if not is_relative_to(candidate, WORKSPACE_ROOT):
-        raise ValueError("cwd must stay inside O3DE_WORKSPACE_ROOT")
-    if not candidate.is_dir():
-        raise ValueError("cwd does not exist")
-    return candidate
-
-
-def relative_path(path):
+def engine_relative(path):
     return str(path.resolve().relative_to(ENGINE_ROOT)).replace(os.sep, "/")
 
 
@@ -140,26 +127,41 @@ def excluded(path):
     return any(part in EXCLUDED_PARTS for part in path.parts)
 
 
+def safe_workspace_path(value):
+    if not value:
+        return WORKSPACE_ROOT
+    candidate = Path(value).expanduser().resolve()
+    if not is_relative_to(candidate, WORKSPACE_ROOT):
+        raise ValueError("cwd must stay inside O3DE_WORKSPACE_ROOT")
+    if not candidate.is_dir():
+        raise ValueError("cwd does not exist")
+    return candidate
+
+
 def candidate_roots():
     roots = []
     for name in SCAN_ROOT_NAMES:
         candidate = ENGINE_ROOT / name
         if candidate.is_dir() and candidate not in roots:
             roots.append(candidate)
-    if ENGINE_ROOT.is_dir():
-        roots.append(ENGINE_ROOT)
     return roots
+
+
+def read_text(path):
+    return path.read_text(encoding="utf-8", errors="ignore")
 
 
 def python_is_callable(path):
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = read_text(path)
     except OSError:
         return False
     return (
         "__main__" in text
         or "argparse" in text
         or re.search(r"(^|\n)\s*def\s+main\s*\(", text) is not None
+        or re.search(r"(^|\n)\s*click\.command", text) is not None
+        or re.search(r"(^|\n)\s*@app\.command", text) is not None
     )
 
 
@@ -171,56 +173,88 @@ def executable_file(path):
     return bool(mode & stat.S_IXUSR) and path.is_file()
 
 
-def parse_cmake_targets(path):
+def parse_cmake(path):
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = read_text(path)
     except OSError:
-        return []
+        return [], []
+
     targets = []
-    pattern = re.compile(
+    tests = []
+
+    target_pattern = re.compile(
         r"\b(add_executable|add_custom_target)\s*\(\s*([A-Za-z0-9_.:+-]+)",
         re.IGNORECASE,
     )
-    for match in pattern.finditer(text):
+    for match in target_pattern.finditer(text):
         targets.append((match.group(1).lower(), match.group(2)))
-    return targets
+
+    test_pattern = re.compile(
+        r"\badd_test\s*\(\s*NAME\s+([A-Za-z0-9_.:+-]+)",
+        re.IGNORECASE,
+    )
+    for match in test_pattern.finditer(text):
+        tests.append(match.group(1))
+
+    return targets, tests
+
+
+def discover_top_level_commands():
+    commands = set(TOP_LEVEL_FALLBACKS)
+    if not O3DE_SCRIPT.is_file():
+        return sorted(commands)
+    try:
+        text = read_text(O3DE_SCRIPT)
+    except OSError:
+        return sorted(commands)
+
+    for match in re.finditer(
+        r"\badd_parser\s*\(\s*[\"']([^\"']+)[\"']",
+        text,
+    ):
+        commands.add(match.group(1))
+
+    return sorted(commands)
+
+
+def add_tool(tools, tool):
+    if len(tools) >= MAX_DISCOVERED_TOOLS:
+        return
+    tools.setdefault(tool["id"], tool)
 
 
 def discover_tools():
     tools = {}
     visited = set()
 
-    def add_tool(tool):
-        key = tool["id"]
-        if key not in tools and len(tools) < MAX_DISCOVERED_TOOLS:
-            tools[key] = tool
-
     for root in candidate_roots():
-        try:
-            walker = os.walk(root)
-        except OSError:
-            continue
-        for current, dirs, files in walker:
-            current_path = Path(current)
-            dirs[:] = [
-                d for d in dirs
-                if d not in EXCLUDED_PARTS
-                and not d.startswith(".")
-            ]
-            if str(current_path) in visited:
+        for current, dirs, files in os.walk(root):
+            current_path = Path(current).resolve()
+            if current_path in visited or excluded(current_path):
+                dirs[:] = []
                 continue
-            visited.add(str(current_path))
+            visited.add(current_path)
+
+            dirs[:] = [
+                directory
+                for directory in dirs
+                if directory not in EXCLUDED_PARTS
+                and not directory.startswith(".")
+            ]
 
             for filename in files:
-                path = current_path / filename
+                path = (current_path / filename).resolve()
                 if excluded(path) or not path.is_file():
                     continue
+                if not is_relative_to(path, ENGINE_ROOT):
+                    continue
 
-                rel = relative_path(path)
+                rel = engine_relative(path)
                 lower = filename.lower()
 
                 if lower.endswith(".py") and python_is_callable(path):
                     add_tool(
+                        tools,
                         {
                             "id": f"py:{slugify(rel)}",
                             "kind": "python",
@@ -229,14 +263,17 @@ def discover_tools():
                             "call": [sys.executable, str(path)],
                             "callable": True,
                             "source": "O3DE Python/script tree",
-                        }
+                        },
                     )
                     continue
 
                 if lower.endswith(".sh") and (
-                    "/scripts/" in f"/{rel}" or "/tools/" in f"/{rel.lower()}"
+                    "/scripts/" in f"/{rel.lower()}"
+                    or "/tools/" in f"/{rel.lower()}"
+                    or "/code/tools/" in f"/{rel.lower()}"
                 ):
                     add_tool(
+                        tools,
                         {
                             "id": f"sh:{slugify(rel)}",
                             "kind": "shell-script",
@@ -245,12 +282,13 @@ def discover_tools():
                             "call": ["bash", str(path)],
                             "callable": True,
                             "source": "O3DE script/tool tree",
-                        }
+                        },
                     )
                     continue
 
                 if os.name == "nt" and lower.endswith((".exe", ".cmd", ".bat")):
                     add_tool(
+                        tools,
                         {
                             "id": f"exe:{slugify(rel)}",
                             "kind": "executable",
@@ -259,12 +297,13 @@ def discover_tools():
                             "call": [str(path)],
                             "callable": True,
                             "source": "O3DE built tool tree",
-                        }
+                        },
                     )
                     continue
 
                 if os.name != "nt" and executable_file(path):
                     add_tool(
+                        tools,
                         {
                             "id": f"exe:{slugify(rel)}",
                             "kind": "executable",
@@ -273,13 +312,15 @@ def discover_tools():
                             "call": [str(path)],
                             "callable": True,
                             "source": "O3DE built tool tree",
-                        }
+                        },
                     )
                     continue
 
                 if lower == "cmakelists.txt":
-                    for target_kind, target in parse_cmake_targets(path):
+                    targets, tests = parse_cmake(path)
+                    for target_kind, target in targets:
                         add_tool(
+                            tools,
                             {
                                 "id": f"cmake:{slugify(rel)}:{slugify(target)}",
                                 "kind": "cmake-target",
@@ -289,21 +330,35 @@ def discover_tools():
                                 "targetKind": target_kind,
                                 "callable": True,
                                 "source": "O3DE CMake tool target",
-                            }
+                            },
+                        )
+                    for test_name in tests:
+                        add_tool(
+                            tools,
+                            {
+                                "id": f"ctest:{slugify(rel)}:{slugify(test_name)}",
+                                "kind": "ctest",
+                                "name": test_name,
+                                "path": rel,
+                                "testName": test_name,
+                                "callable": True,
+                                "source": "O3DE CTest registration",
+                            },
                         )
 
-    for command in sorted(TOP_LEVEL_COMMANDS):
-        if O3DE_SCRIPT.is_file():
+    if O3DE_SCRIPT.is_file() and is_relative_to(O3DE_SCRIPT, ENGINE_ROOT):
+        for command in discover_top_level_commands():
             add_tool(
+                tools,
                 {
                     "id": f"o3de-cli:{command}",
                     "kind": "o3de-cli",
                     "name": command,
-                    "path": relative_path(O3DE_SCRIPT),
+                    "path": engine_relative(O3DE_SCRIPT),
                     "call": [sys.executable, str(O3DE_SCRIPT), command],
                     "callable": True,
                     "source": "O3DE scripts/o3de.py top-level CLI",
-                }
+                },
             )
 
     return sorted(tools.values(), key=lambda item: item["id"])
@@ -329,19 +384,43 @@ def validate_args(args):
 
 
 def command_for_tool(tool, args):
-    if tool["kind"] in {"python", "shell-script", "executable", "o3de-cli"}:
+    kind = tool["kind"]
+    if kind in {"python", "shell-script", "executable", "o3de-cli"}:
         return tool["call"] + args
 
-    if tool["kind"] == "cmake-target":
-        build_root = BUILD_ROOT
-        if not build_root.is_dir():
+    if kind == "cmake-target":
+        if not BUILD_ROOT.is_dir():
             raise RuntimeError(
-                f"O3DE build directory not found at {build_root}. "
+                f"O3DE build directory not found at {BUILD_ROOT}. "
                 "Set O3DE_BUILD_DIR to a configured CMake build tree."
             )
-        return ["cmake", "--build", str(build_root), "--target", tool["target"], *args]
+        return ["cmake", "--build", str(BUILD_ROOT), "--target", tool["target"], *args]
 
-    raise ValueError(f"Unsupported tool kind: {tool['kind']}")
+    if kind == "ctest":
+        if not BUILD_ROOT.is_dir():
+            raise RuntimeError(
+                f"O3DE build directory not found at {BUILD_ROOT}. "
+                "Set O3DE_BUILD_DIR to a configured CTest build tree."
+            )
+        return [
+            "ctest",
+            "--test-dir",
+            str(BUILD_ROOT),
+            "--output-on-failure",
+            "-R",
+            f"^{re.escape(tool['testName'])}$",
+            *args,
+        ]
+
+    raise ValueError(f"Unsupported tool kind: {kind}")
+
+
+def execution_environment():
+    env = os.environ.copy()
+    env["O3DE_ROOT"] = str(ENGINE_ROOT)
+    env["O3DE_WORKSPACE_ROOT"] = str(WORKSPACE_ROOT)
+    env["O3DE_BUILD_DIR"] = str(BUILD_ROOT)
+    return env
 
 
 def run_tool(tool_id, args, cwd, timeout_seconds, background=False):
@@ -352,18 +431,11 @@ def run_tool(tool_id, args, cwd, timeout_seconds, background=False):
             "Unknown tool_id. Call /discover first and use an id from the returned inventory."
         )
 
-    if not tool.get("callable", False):
-        raise ValueError("The selected inventory entry is not callable")
-
     clean_args = validate_args(args)
     workdir = safe_workspace_path(cwd)
     timeout_seconds = max(1, min(int(timeout_seconds or 120), 600))
     command = command_for_tool(tool, clean_args)
-
-    environment = os.environ.copy()
-    environment["O3DE_ROOT"] = str(ENGINE_ROOT)
-    environment["O3DE_WORKSPACE_ROOT"] = str(WORKSPACE_ROOT)
-    environment["O3DE_BUILD_DIR"] = str(BUILD_ROOT)
+    env = execution_environment()
 
     if background:
         process = subprocess.Popen(
@@ -375,13 +447,14 @@ def run_tool(tool_id, args, cwd, timeout_seconds, background=False):
             text=True,
             shell=False,
             start_new_session=(os.name != "nt"),
-            env=environment,
+            env=env,
         )
         BACKGROUND_PROCESSES[process.pid] = process
         return {
             "status": "started",
             "toolId": tool_id,
             "kind": tool["kind"],
+            "path": tool["path"],
             "command": command[0],
             "args": command[1:],
             "cwd": str(workdir),
@@ -398,7 +471,7 @@ def run_tool(tool_id, args, cwd, timeout_seconds, background=False):
         timeout=timeout_seconds,
         shell=False,
         check=False,
-        env=environment,
+        env=env,
     )
 
     return {
@@ -418,8 +491,8 @@ def probe_tool(tool_id):
     tool = index.get(tool_id)
     if not tool:
         raise ValueError("Unknown tool_id")
-    if tool["kind"] == "cmake-target":
-        raise ValueError("CMake targets are build targets, not directly probeable")
+    if tool["kind"] in {"cmake-target", "ctest"}:
+        raise ValueError("Build/test entries are not --help probeable")
 
     command = command_for_tool(tool, ["--help"])
     try:
@@ -433,6 +506,7 @@ def probe_tool(tool_id):
             timeout=30,
             shell=False,
             check=False,
+            env=execution_environment(),
         )
         return {
             "status": "ok" if completed.returncode == 0 else "failed",
@@ -455,13 +529,7 @@ def process_snapshot():
     result = []
     for pid, process in list(BACKGROUND_PROCESSES.items()):
         code = process.poll()
-        result.append(
-            {
-                "pid": pid,
-                "running": code is None,
-                "returnCode": code,
-            }
-        )
+        result.append({"pid": pid, "running": code is None, "returnCode": code})
         if code is not None:
             BACKGROUND_PROCESSES.pop(pid, None)
     return result
@@ -485,6 +553,31 @@ def stop_process(pid):
     return {"status": "stopped", "pid": process.pid, "tracked": True}
 
 
+def filter_tools(query="", kind="", callable_only=True):
+    items = discover_tools()
+    query = str(query or "").strip().lower()
+    kind = str(kind or "").strip().lower()
+    result = []
+    for tool in items:
+        if callable_only and not tool.get("callable"):
+            continue
+        haystack = " ".join(
+            [
+                str(tool.get("id", "")),
+                str(tool.get("name", "")),
+                str(tool.get("path", "")),
+                str(tool.get("kind", "")),
+                str(tool.get("source", "")),
+            ]
+        ).lower()
+        if query and query not in haystack:
+            continue
+        if kind and tool.get("kind", "").lower() != kind:
+            continue
+        result.append(tool)
+    return result
+
+
 def inventory():
     tools = discover_tools()
     by_kind = {}
@@ -498,17 +591,18 @@ def inventory():
         "buildRoot": str(BUILD_ROOT),
         "toolCount": len(tools),
         "byKind": by_kind,
+        "topLevelCommandCount": len(discover_top_level_commands()),
         "authRequiredForExecution": bool(BRIDGE_TOKEN),
-        "scanRoots": [str(x.relative_to(ENGINE_ROOT)) if x != ENGINE_ROOT else "." for x in candidate_roots()],
+        "scanRoots": [str(x.relative_to(ENGINE_ROOT)) for x in candidate_roots()],
     }
 
 
 def self_test():
-    if "o3de-cli:get-global-project" not in tool_index() and O3DE_SCRIPT.is_file():
-        raise AssertionError("O3DE CLI registration discovery failed")
-    test_root = WORKSPACE_ROOT
-    if not is_relative_to(test_root, WORKSPACE_ROOT):
-        raise AssertionError("workspace containment failed")
+    index = tool_index()
+    bridge_id = f"py:{slugify(engine_relative(Path(__file__)))}"
+    if bridge_id not in index:
+        raise AssertionError("bridge discovery failed")
+
     validate_args(["--ok", "value"])
     try:
         validate_args(["\x00"])
@@ -516,11 +610,39 @@ def self_test():
         pass
     else:
         raise AssertionError("NUL validation failed")
+
+    cmake_text = """
+    add_executable(TestTool main.cpp)
+    add_custom_target(CustomTool)
+    add_test(NAME SmokeTest COMMAND TestTool)
+    """
+    tmp = WORKSPACE_ROOT / ".o3de-mcp-self-test.cmake"
+    try:
+        tmp.write_text(cmake_text, encoding="utf-8")
+        targets, tests = parse_cmake(tmp)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+    if ("add_executable", "TestTool") not in targets:
+        raise AssertionError("CMake executable parsing failed")
+    if "SmokeTest" not in tests:
+        raise AssertionError("CTest parsing failed")
+
+    direct = command_for_tool(
+        {"kind": "o3de-cli", "call": [sys.executable, "/tmp/o3de.py"]},
+        [],
+    )
+    if direct[:2] != [sys.executable, "/tmp/o3de.py"]:
+        raise AssertionError("command building failed")
+
     print(json.dumps({"status": "ok", **inventory()}, indent=2))
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HyoukaO3DEBridge/2.0"
+    server_version = "HyoukaO3DEBridge/3.0"
 
     def send_json(self, status, payload):
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -559,9 +681,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(
                     200,
                     {
-                        "status": "ok",
                         **inventory(),
-                        "commands": sorted(TOP_LEVEL_COMMANDS),
+                        "commands": discover_top_level_commands(),
                         "pid": os.getpid(),
                     },
                 )
@@ -570,7 +691,31 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/discover":
                 if reject_if_unauthorized(self):
                     return
-                self.send_json(200, inventory() | {"tools": discover_tools()})
+                self.send_json(200, {**inventory(), "tools": discover_tools()})
+                return
+
+            if path == "/find":
+                if reject_if_unauthorized(self):
+                    return
+                query = urlparse(self.path).query
+                params = {}
+                for pair in query.split("&"):
+                    if "=" in pair:
+                        key, value = pair.split("=", 1)
+                        params[key] = value
+                found = filter_tools(
+                    params.get("q", ""),
+                    params.get("kind", ""),
+                    params.get("callable", "true").lower() != "false",
+                )
+                self.send_json(
+                    200,
+                    {
+                        **inventory(),
+                        "tools": found,
+                        "returnedTools": len(found),
+                    },
+                )
                 return
 
             if path == "/processes":
@@ -593,7 +738,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         try:
-            if path not in {"/help", "/cli"} and reject_if_unauthorized(self):
+            if path not in {"/help"} and reject_if_unauthorized(self):
                 return
 
             payload = self.read_json()
@@ -613,6 +758,7 @@ class Handler(BaseHTTPRequestHandler):
                     timeout=30,
                     shell=False,
                     check=False,
+                    env=execution_environment(),
                 )
                 self.send_json(
                     200,
@@ -634,7 +780,10 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("timeoutSeconds", 120),
                     bool(payload.get("background", False)),
                 )
-                self.send_json(200 if result["status"] in {"ok", "started"} else 400, result)
+                self.send_json(
+                    200 if result["status"] in {"ok", "started"} else 400,
+                    result,
+                )
                 return
 
             if path == "/invoke":
@@ -645,11 +794,17 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("timeoutSeconds", 120),
                     bool(payload.get("background", False)),
                 )
-                self.send_json(200 if result["status"] in {"ok", "started"} else 400, result)
+                self.send_json(
+                    200 if result["status"] in {"ok", "started"} else 400,
+                    result,
+                )
                 return
 
             if path == "/probe":
-                self.send_json(200, probe_tool(str(payload.get("toolId", "")).strip()))
+                self.send_json(
+                    200,
+                    probe_tool(str(payload.get("toolId", "")).strip()),
+                )
                 return
 
             if path == "/stop":
@@ -662,23 +817,22 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("target is required")
                 if not BUILD_ROOT.is_dir():
                     raise RuntimeError(f"O3DE_BUILD_DIR does not exist: {BUILD_ROOT}")
-                args = ["--target", target]
-                jobs = int(payload.get("jobs", 0) or 0)
-                config = str(payload.get("config", "")).strip()
+
                 command = ["cmake", "--build", str(BUILD_ROOT)]
+                config = str(payload.get("config", "")).strip()
                 if config:
                     command += ["--config", config]
-                command += args
+                command += ["--target", target]
+
+                jobs = int(payload.get("jobs", 0) or 0)
                 if jobs > 0:
                     command += ["-j", str(min(jobs, 32))]
-                result = run_tool(
-                    f"cmake:{relative_path(ENGINE_ROOT / "CMakeLists.txt")}:{slugify(target)}",
-                    [],
-                    payload.get("cwd"),
-                    payload.get("timeoutSeconds", 120),
-                    bool(payload.get("background", False)),
-                ) if False else subprocess_run_build(command, payload)
-                self.send_json(200 if result["status"] in {"ok", "started"} else 400, result)
+
+                result = run_build(command, payload)
+                self.send_json(
+                    200 if result["status"] in {"ok", "started"} else 400,
+                    result,
+                )
                 return
 
             self.send_json(404, {"status": "error", "error": "not_found"})
@@ -706,13 +860,12 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
-def subprocess_run_build(command, payload):
+def run_build(command, payload):
     workdir = safe_workspace_path(payload.get("cwd"))
-    timeout_seconds = max(1, min(int(payload.get("timeoutSeconds", 120) or 120), 600))
-    environment = os.environ.copy()
-    environment["O3DE_ROOT"] = str(ENGINE_ROOT)
-    environment["O3DE_WORKSPACE_ROOT"] = str(WORKSPACE_ROOT)
-    environment["O3DE_BUILD_DIR"] = str(BUILD_ROOT)
+    timeout_seconds = max(
+        1, min(int(payload.get("timeoutSeconds", 120) or 120), 600)
+    )
+    env = execution_environment()
 
     if bool(payload.get("background", False)):
         process = subprocess.Popen(
@@ -724,7 +877,7 @@ def subprocess_run_build(command, payload):
             text=True,
             shell=False,
             start_new_session=(os.name != "nt"),
-            env=environment,
+            env=env,
         )
         BACKGROUND_PROCESSES[process.pid] = process
         return {"status": "started", "pid": process.pid, "command": command}
@@ -739,7 +892,7 @@ def subprocess_run_build(command, payload):
         shell=False,
         timeout=timeout_seconds,
         check=False,
-        env=environment,
+        env=env,
     )
     return {
         "status": "ok" if completed.returncode == 0 else "failed",
@@ -754,9 +907,11 @@ def main():
     parser = argparse.ArgumentParser(description="O3DE universal HTTP tool bridge")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+
     if args.self_test:
         self_test()
         return
+
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 

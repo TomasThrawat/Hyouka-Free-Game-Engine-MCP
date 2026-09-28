@@ -21,8 +21,10 @@ jobs:
             ${{ runner.os }}-nextjs-
       - run: npm install
       - run: npm run build
-      - name: Validate O3DE bridge syntax
-        run: python3 -m py_compile o3de/bridge.py
+      - name: Validate O3DE bridge
+        run: |
+          python3 -m py_compile o3de/bridge.py
+          python3 o3de/bridge.py --self-test
       - name: Verify no legacy Blender integration
         shell: bash
         run: |

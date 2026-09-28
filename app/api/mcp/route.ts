@@ -36,65 +36,62 @@ function trimUrl(value: unknown) {
 async function resolveBridge() {
   const configUrl =
     process.env.O3DE_BRIDGE_CONFIG_URL?.trim() || DEFAULT_BRIDGE_CONFIG_URL;
+
   try {
     const response = await fetch(
       `${configUrl}${configUrl.includes("?") ? "&" : "?"}t=${Date.now()}`,
       { cache: "no-store" },
     );
+
     if (response.ok) {
       const payload = (await response.json()) as {
         status?: unknown;
         url?: unknown;
-        tokenRequired?: unknown;
       };
+
       if (payload.status === "ok") {
         const url = trimUrl(payload.url);
-        if (url) {
-          return { url, tokenRequired: payload.tokenRequired === true };
-        }
+        if (url) return url;
       }
     }
   } catch {
-    // Fall through to direct environment configuration.
+    // Fall through to direct configuration.
   }
 
-  const direct = trimUrl(process.env.O3DE_BRIDGE_URL);
-  return direct
-    ? {
-        url: direct,
-        tokenRequired: Boolean(process.env.O3DE_BRIDGE_TOKEN),
-      }
-    : null;
+  return trimUrl(process.env.O3DE_BRIDGE_URL);
 }
 
 async function callBridge(
   path: string,
   body?: Record<string, unknown>,
 ): Promise<BridgeResult> {
-  const bridge = await resolveBridge();
-  if (!bridge) {
+  const bridgeUrl = await resolveBridge();
+
+  if (!bridgeUrl) {
     return {
       status: "not_configured",
       error: "No live O3DE bridge URL is configured.",
       expected:
         "O3DE_BRIDGE_URL or runtime/o3de-bridge.json with status=ok and an HTTPS url.",
       hint:
-        "The Vercel MCP protocol layer is live. O3DE execution requires a separate bridge host with O3DE installed.",
+        "The Vercel MCP layer is live. O3DE execution requires a separate bridge host with O3DE installed.",
     };
   }
 
   const headers: Record<string, string> = {};
   const token = process.env.O3DE_BRIDGE_TOKEN?.trim();
+
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers["content-type"] = "application/json";
 
   try {
-    const response = await fetch(bridge.url + path, {
+    const response = await fetch(bridgeUrl + path, {
       method: body ? "POST" : "GET",
       headers,
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
     });
+
     const raw = await response.text();
 
     let payload: BridgeResult;
@@ -149,9 +146,9 @@ const handler = createMcpHandler((server) => {
     {
       title: "Discover All O3DE Tools",
       description:
-        "Dynamically inventory callable O3DE Python scripts, shell scripts, built executables, top-level CLI commands, and CMake tool targets from the installed O3DE tree.",
+        "Dynamically inventory callable O3DE Python scripts, shell scripts, built executables, first-party CLI commands, CMake targets, and CTest registrations.",
       inputSchema: z.object({
-        maxTools: z.number().int().min(1).max(1000).optional(),
+        maxTools: z.number().int().min(1).max(2000).optional(),
         probeHelp: z.boolean().optional(),
       }),
     },
@@ -160,7 +157,7 @@ const handler = createMcpHandler((server) => {
       if (result.status !== "ok") return textResult(result);
 
       const tools = Array.isArray(result.tools)
-        ? result.tools.slice(0, maxTools ?? 1000)
+        ? result.tools.slice(0, maxTools ?? 2000)
         : [];
 
       if (!probeHelp) {
@@ -171,25 +168,43 @@ const handler = createMcpHandler((server) => {
         });
       }
 
-      const probed = [];
-      for (const tool of tools.slice(0, 100)) {
+      const probes = [];
+      for (const tool of tools.slice(0, 25)) {
         const id = (tool as { id?: unknown }).id;
         if (typeof id === "string") {
-          probed.push(
-            await callBridge("/probe", {
-              toolId: id,
-            }),
-          );
+          probes.push(await callBridge("/probe", { toolId: id }));
         }
       }
 
       return textResult({
         ...result,
         tools,
-        probes: probed,
+        probes,
         returnedTools: tools.length,
-        probedTools: Math.min(tools.length, 100),
+        probedTools: Math.min(tools.length, 25),
       });
+    },
+  );
+
+  server.registerTool(
+    "o3de_find_tools",
+    {
+      title: "Find O3DE Tools",
+      description:
+        "Search the dynamic O3DE inventory by id, name, path, kind, or source without returning the full inventory.",
+      inputSchema: z.object({
+        query: z.string().max(200).optional(),
+        kind: z.string().max(80).optional(),
+        callableOnly: z.boolean().optional(),
+      }),
+    },
+    async ({ query, kind, callableOnly }) => {
+      const params = new URLSearchParams();
+      if (query) params.set("q", query);
+      if (kind) params.set("kind", kind);
+      params.set("callable", String(callableOnly !== false));
+
+      return textResult(await callBridge(`/find?${params.toString()}`));
     },
   );
 
@@ -198,13 +213,12 @@ const handler = createMcpHandler((server) => {
     {
       title: "Probe O3DE Tool",
       description:
-        "Run --help against one discovered O3DE tool and return its actual help output.",
+        "Run --help against one discovered O3DE executable/script/CLI tool and return its actual help output.",
       inputSchema: z.object({
         toolId: z.string().min(1).max(4096),
       }),
     },
-    async ({ toolId }) =>
-      textResult(await callBridge("/probe", { toolId })),
+    async ({ toolId }) => textResult(await callBridge("/probe", { toolId })),
   );
 
   server.registerTool(
@@ -212,7 +226,7 @@ const handler = createMcpHandler((server) => {
     {
       title: "Invoke Any O3DE Tool",
       description:
-        "Universal O3DE dispatcher. Execute any tool_id returned by o3de_discover_tools, including Python tools, shell tools, executables, top-level CLI commands, and CMake targets.",
+        "Universal O3DE dispatcher for every callable tool_id returned by discovery, including Python, shell scripts, built executables, CLI commands, CMake targets, and CTest registrations.",
       inputSchema: z.object({
         toolId: z.string().min(1).max(4096),
         ...commonInput.shape,
@@ -231,34 +245,11 @@ const handler = createMcpHandler((server) => {
   );
 
   server.registerTool(
-    "o3de_cli",
-    {
-      title: "O3DE CLI",
-      description:
-        "Compatibility wrapper for a top-level scripts/o3de.py command; use o3de_invoke_tool for non-top-level tooling.",
-      inputSchema: z.object({
-        command: z.string().min(1).max(200),
-        ...commonInput.shape,
-      }),
-    },
-    async ({ command, args, cwd, timeoutSeconds, background }) =>
-      textResult(
-        await callBridge("/cli", {
-          command,
-          args,
-          cwd,
-          timeoutSeconds,
-          background,
-        }),
-      ),
-  );
-
-  server.registerTool(
     "o3de_build_target",
     {
-      title: "Build O3DE Target",
+      title: "Build Any O3DE Target",
       description:
-        "Build any configured O3DE CMake target, with optional configuration, parallel jobs, timeout, and background execution.",
+        "Build a configured O3DE CMake target with optional configuration, parallel jobs, timeout, and background execution.",
       inputSchema: z.object({
         target: z.string().min(1).max(512),
         config: z.string().max(100).optional(),
@@ -286,7 +277,7 @@ const handler = createMcpHandler((server) => {
     {
       title: "O3DE Processes",
       description:
-        "List O3DE bridge-managed background processes started through the universal dispatcher.",
+        "List bridge-managed background O3DE/tool processes.",
     },
     async () => textResult(await callBridge("/processes")),
   );
@@ -296,7 +287,7 @@ const handler = createMcpHandler((server) => {
     {
       title: "Stop O3DE Process",
       description:
-        "Stop a background process previously started through the O3DE bridge.",
+        "Stop a background process previously started through the bridge.",
       inputSchema: z.object({
         pid: z.number().int().positive(),
       }),
@@ -305,11 +296,34 @@ const handler = createMcpHandler((server) => {
   );
 
   server.registerTool(
+    "o3de_cli",
+    {
+      title: "O3DE CLI",
+      description:
+        "Compatibility wrapper for any top-level command dynamically found in scripts/o3de.py.",
+      inputSchema: z.object({
+        command: z.string().min(1).max(200),
+        ...commonInput.shape,
+      }),
+    },
+    async ({ command, args, cwd, timeoutSeconds, background }) =>
+      textResult(
+        await callBridge("/cli", {
+          command,
+          args,
+          cwd,
+          timeoutSeconds,
+          background,
+        }),
+      ),
+  );
+
+  server.registerTool(
     "o3de_cli_help",
     {
       title: "O3DE CLI Help",
       description:
-        "Ask the actual scripts/o3de.py entry point for its current CLI help output.",
+        "Ask scripts/o3de.py for its current CLI help output.",
       inputSchema: z.object({
         topic: z.string().max(120).optional(),
       }),
@@ -320,12 +334,13 @@ const handler = createMcpHandler((server) => {
 
   for (const command of O3DE_COMMANDS) {
     const toolName = `o3de_${command.replace(/-/g, "_")}`;
+
     server.registerTool(
       toolName,
       {
         title: `O3DE ${command}`,
         description:
-          "Compatibility shortcut for a first-party O3DE top-level command. Use o3de_invoke_tool for all other discovered tools.",
+          "Compatibility shortcut for a first-party O3DE top-level command. Use o3de_invoke_tool for all dynamically discovered non-top-level tools.",
         inputSchema: commonInput,
       },
       async ({ args, cwd, timeoutSeconds, background }) =>

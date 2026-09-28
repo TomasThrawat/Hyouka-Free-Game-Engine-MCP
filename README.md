@@ -2,45 +2,44 @@
 
 A Vercel-hosted Streamable HTTP MCP gateway for the open-source Open 3D Engine (O3DE).
 
-## Scope
+## Full callable-tool gateway
 
-This is no longer limited to `scripts/o3de.py` top-level commands.
+The MCP is designed around **dynamic tool discovery**, not a hard-coded list.
 
-The MCP now exposes:
+It can discover and invoke:
 
-- dynamic discovery of callable O3DE Python scripts
-- O3DE shell scripts under the engine tool/script areas
-- built O3DE executables
-- first-party `scripts/o3de.py` commands
-- CMake executable/custom targets found in O3DE tool trees
-- help probing for discovered tools
-- universal tool invocation by stable `toolId`
-- background process start/stop
-- CMake target builds
+- all top-level commands dynamically detected from `scripts/o3de.py`
+- callable Python scripts in O3DE script/tool trees
+- O3DE shell scripts under script/tool trees
+- built O3DE executables found in the engine/tool/build trees
+- CMake `add_executable` targets
+- CMake `add_custom_target` targets
+- CTest `add_test(NAME ...)` registrations
+- long-running/background tools with process tracking
+- current tool `--help` output
 
-### MCP tools
+The MCP surface is:
 
 - `o3de_discover_tools`
+- `o3de_find_tools`
 - `o3de_probe_tool`
 - `o3de_invoke_tool`
-- `o3de_cli`
 - `o3de_build_target`
 - `o3de_processes`
 - `o3de_stop_process`
-- `o3de_status`
+- `o3de_cli`
 - `o3de_cli_help`
+- `o3de_status`
 
-The original top-level shortcuts remain available for compatibility.
+The older individual top-level shortcuts remain for compatibility.
 
-## How "all tools" works
+## Important meaning of "all"
 
-O3DE contains many C++ APIs and editor systems that are not independently callable processes. Those are not fabricated into fake MCP tools.
+O3DE also contains C++ classes, components, editor APIs, and internal functions that are not independently executable interfaces. Those are not fabricated into fake MCP tools.
 
-Instead, the bridge discovers every callable artifact it can execute from the installed tree:
+Instead, every callable artifact discoverable from the installed O3DE tree is addressable through a stable `toolId` and the universal dispatcher.
 
-`Python -> shell script -> executable -> O3DE CLI -> CMake target`
-
-This means newly built O3DE tools can become MCP-addressable without modifying the Vercel route.
+Newly built executables and newly added Python/CMake tools become discoverable without changing the Vercel route.
 
 ## Architecture
 
@@ -49,20 +48,20 @@ ChatGPT / MCP client
 -> Vercel Streamable HTTP MCP
 -> HTTPS O3DE universal bridge
 -> dynamic O3DE inventory
--> scripts / tools / executables / CMake targets
+-> scripts / executables / CMake / CTest
 -> O3DE
 
-Vercel remains the protocol/control layer. O3DE itself runs on a separate host because Vercel Functions are not a persistent O3DE installation.
+Vercel is the protocol/control layer. The O3DE process runs on a separate host because Vercel Functions are not a persistent O3DE installation.
 
 ## Runtime configuration
 
-Bridge host:
+Bridge:
 
 - `O3DE_ROOT`: O3DE source/installation root
-- `O3DE_WORKSPACE_ROOT`: optional command working-directory boundary
-- `O3DE_BUILD_DIR`: optional configured CMake build tree
+- `O3DE_WORKSPACE_ROOT`: allowed working-directory boundary
+- `O3DE_BUILD_DIR`: configured CMake/CTest build tree
 - `O3DE_BRIDGE_PORT`: default `9765`
-- `O3DE_BRIDGE_TOKEN`: recommended shared bearer token for public bridges
+- `O3DE_BRIDGE_TOKEN`: recommended for public bridge URLs
 
 Vercel:
 
@@ -72,20 +71,21 @@ Vercel:
 
 The default runtime manifest is `runtime/o3de-bridge.json`.
 
-## Source basis
+## Safety model
 
-The adapter was built against the O3DE source repository:
+The bridge:
+
+- uses argv arrays and `shell=False`
+- validates and limits arguments
+- restricts command cwd to `O3DE_WORKSPACE_ROOT`
+- restricts discovered callable files to the O3DE engine root
+- excludes third-party/cache trees
+- supports an optional shared bearer token
+
+## Source
+
+The gateway was built from the O3DE source repository:
 
 https://github.com/o3de/o3de
 
-The source audit covered the engine's script/tool trees and targeted searches for Python entry points, Asset Processor/Project Manager tooling, CMake targets, and automated testing.
-
-## Endpoint
-
-`/api/mcp`
-
-Health:
-
-`/health`
-
-The MCP is live on Vercel even when no bridge is configured; in that state execution tools return `not_configured` rather than pretending the engine ran.
+The source audit covered O3DE script/tool directories plus targeted searches for Python entry points, Asset Processor, Project Manager, CMake tool targets, and automated testing.
