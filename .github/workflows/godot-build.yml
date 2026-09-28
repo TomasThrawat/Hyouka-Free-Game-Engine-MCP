@@ -1,0 +1,32 @@
+name: Godot Build
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Configure Git defaults
+        run: git config --global init.defaultBranch main
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Restore Next.js build cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
+
+      - name: Run Godot CI
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: bash .github/ci/godot-build.sh
