@@ -6,20 +6,38 @@ Official repository: https://github.com/godotengine/godot
 
 Runtime: **Godot 4.7.2-stable .NET Linux x86_64**, downloaded from the official GitHub release and SHA-512 verified.
 
-The .NET-enabled Godot editor adds C# scripting support. GitHub Actions installs the 64-bit .NET SDK before downloading and running the .NET Godot runtime.
+## Official Godot tool coverage
+
+This MCP uses the official Godot Engine repository as the source of truth for the Godot 4.7.2-stable command-line surface.
+
+- 115 official CLI switches from main/main.cpp are shipped as first-class discovered MCP tools.
+- The bridge also checks the installed binary's --help output for any additional runtime switches not already in the official manifest.
+- Stable gateway tools provide universal invocation, discovery, and runtime health.
+- Additional inspection tools expose Godot's public ClassDB class list, class metadata (methods/properties/signals/enums), and headless PackedScene scene trees.
+
+The 115-switch manifest is stored at runtime/godot-official-cli.json and records the source repository, ref, source file, version, and exact switches.
+
+This does not pretend that every internal/private C++ function is a tool. Godot exposes hundreds of public engine/editor classes and thousands of methods; those are covered through reflection/inspection tools instead of creating thousands of duplicate MCP registrations.
 
 ## Dynamic Godot tools
 
-The MCP no longer hardcodes a separate registration for every Godot command.
+The MCP reads the live bridge inventory and automatically registers every discovered callable tool with the MCP server.
 
-At MCP request time, it reads the live bridge's /discover inventory and automatically registers every discovered callable tool with the MCP server. The inventory is refreshed every 15 seconds and can also be forced through the godot_discover_tools gateway tool.
+Stable gateway tools:
 
-This means newly discovered Godot CLI tools and flags become MCP tools without adding another registerTool block.
+- godot_invoke_tool
+- godot_discover_tools
+- godot_status
 
-There are also three small stable gateway tools:
+Bridge inspection tools include:
 
-- godot_invoke_tool: universal fallback for any discovered tool id.
-- godot_discover_tools: refresh and inspect the complete bridge inventory.
-- godot_status: check the live runtime.
+- godot-class-list
+- godot-class-info
+- godot-scene-tree
 
-The dynamic surface currently covers the tools exposed by the bridge, including Godot CLI commands and flags discovered from Godot --help. It does not claim to expose every private/internal Godot Editor API.
+The current design keeps everything in this single MCP and is compatible with MCP tool-list refresh/synchronization.
+
+## Source
+
+- https://github.com/godotengine/godot/tree/4.7.2-stable
+- CLI source: main/main.cpp
