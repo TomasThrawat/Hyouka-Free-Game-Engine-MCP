@@ -5,6 +5,6 @@
   "transport": "http",
   "tokenRequired": false,
   "mode": "public-cli-only",
-  "runtime": "no active bridge",
-  "notes": "Dispatch the O3DE Live Bridge workflow to start a temporary live runtime."
+  "runtime": "GitHub Codespaces O3DE 26.05",
+  "notes": "Start the Hyouka O3DE MCP Codespace. Its startup script installs/starts O3DE, makes port 9765 public, verifies O3DE, and publishes the live bridge URL."
 }

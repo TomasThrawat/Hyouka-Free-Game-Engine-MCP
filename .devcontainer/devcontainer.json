@@ -1,12 +1,28 @@
 {
   "name": "Hyouka O3DE MCP Runtime",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
-  "features": {"ghcr.io/devcontainers/features/node:1": {"version": "22"}},
-  "hostRequirements": {"cpus": 4, "memory": "16gb", "storage": "32gb"},
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    }
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "32gb"
+  },
   "forwardPorts": [3000, 9765],
   "portsAttributes": {
-    "3000": {"label": "Vercel MCP Gateway", "protocol": "http", "onAutoForward": "notify"},
-    "9765": {"label": "O3DE HTTP Bridge", "protocol": "http", "onAutoForward": "silent"}
+    "3000": {
+      "label": "Vercel MCP Gateway",
+      "protocol": "http",
+      "onAutoForward": "notify"
+    },
+    "9765": {
+      "label": "O3DE HTTP Bridge",
+      "protocol": "http",
+      "onAutoForward": "silent"
+    }
   },
   "postCreateCommand": "bash .devcontainer/install-o3de.sh",
   "postStartCommand": "bash .devcontainer/start-o3de.sh",
