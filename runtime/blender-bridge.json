@@ -1,10 +1,10 @@
 {
   "status": "ok",
   "engine": "Blender",
-  "url": "https://cities-successfully-adipex-dir.trycloudflare.com",
-  "createdAt": "2026-09-28T09:58:38.047878+00:00",
+  "url": "https://antarctica-informative-beautiful-coordinated.trycloudflare.com",
+  "createdAt": "2026-09-28T10:16:55.105227+00:00",
   "transport": "http",
   "runtime": "GitHub Actions public runner",
   "policy": "free-only-no-pc",
-  "notes": "Temporary Cloudflare Quick Tunnel for development/testing."
+  "notes": "Auto-renewed free Blender runtime. The public URL rotates automatically."
 }
