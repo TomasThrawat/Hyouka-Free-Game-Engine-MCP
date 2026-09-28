@@ -1,27 +1,15 @@
-const commands = [
-  "get-global-project",
-  "set-global-project",
-  "create-template",
-  "create-from-template",
-  "register",
-  "register-show",
-  "get-registered",
-  "enable-gem",
-  "disable-gem",
-  "edit-engine-properties",
-  "edit-project-properties",
-  "edit-gem-properties",
-  "sha256",
-  "download",
-  "export-project-configure",
-  "export-project",
-  "repo",
-  "edit-repo-properties",
+const capabilities = [
+  "Dynamic Python tool discovery",
+  "Shell-script discovery",
+  "Built executable discovery",
+  "O3DE CLI discovery",
+  "CMake executable/custom targets",
+  "CTest registrations",
+  "Help probing",
+  "Universal tool invocation",
+  "Background process control",
+  "CMake builds",
 ];
-
-function mcpToolName(command: string) {
-  return `o3de_${command.replace(/-/g, "_")}`;
-}
 
 export default function Home() {
   return (
@@ -50,25 +38,26 @@ export default function Home() {
           github.com/o3de/o3de
         </a>
       </p>
-      <p>
-        The MCP mirrors the first-party subcommands registered by{" "}
-        <code>scripts/o3de.py</code>.
-      </p>
 
-      <h2>Exposed CLI tools</h2>
+      <h2>Dynamic tool gateway</h2>
+      <p>
+        The bridge discovers callable O3DE tooling from the installed engine
+        tree instead of limiting the MCP to top-level CLI commands.
+      </p>
       <ul>
-        {commands.map((command) => (
-          <li key={command}>
-            <code>{mcpToolName(command)}</code>
-          </li>
+        {capabilities.map((capability) => (
+          <li key={capability}>{capability}</li>
         ))}
       </ul>
 
       <h2>Execution model</h2>
       <p>
         Vercel hosts the MCP protocol layer. The actual O3DE process runs in a
-        separate HTTP bridge because Vercel Functions do not provide a
-        persistent O3DE engine installation.
+        separate HTTPS bridge host with O3DE installed.
+      </p>
+      <p>
+        Internal C++ classes and APIs that are not independently callable are
+        not fabricated into fake MCP tools.
       </p>
     </main>
   );

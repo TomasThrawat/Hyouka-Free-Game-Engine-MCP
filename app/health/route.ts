@@ -9,10 +9,11 @@ export function GET() {
     engine: "O3DE",
     source: "https://github.com/o3de/o3de",
     cliEntryPoint: "scripts/o3de.py",
+    gatewayMode: "dynamic-callable-tool-discovery",
     bridgeConfigUrl:
       process.env.O3DE_BRIDGE_CONFIG_URL || DEFAULT_BRIDGE_CONFIG_URL,
     directBridgeConfigured: Boolean(process.env.O3DE_BRIDGE_URL),
     executionModel:
-      "Vercel hosts MCP; O3DE commands execute through a separate HTTP bridge.",
+      "Vercel hosts MCP; O3DE commands execute through a separate universal HTTP bridge.",
   });
 }
