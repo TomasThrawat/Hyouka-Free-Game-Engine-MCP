@@ -1,0 +1,12 @@
+name: GitHub Actions Probe
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "GitHub Actions probe OK"
