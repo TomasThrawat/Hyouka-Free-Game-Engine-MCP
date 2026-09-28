@@ -134,6 +134,10 @@ jobs:
           set -e
           jq -n             --arg url "$URL"             --arg duration "$DURATION"             --arg run "$GITHUB_RUN_ID"             '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration,ownerRunId:$run}'             > runtime/godot-bridge.json
           git add runtime/godot-bridge.json
+          if git diff --cached --quiet; then
+            echo "Metadata unchanged; nothing to commit."
+            exit 0
+          fi
           git commit -m "chore: publish live Godot MCP bridge [skip ci]"
           git push
 
@@ -168,18 +172,3 @@ jobs:
           sleep $((HANDOFF_MINUTES*60))
           curl -fsSL -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/godot-live.yml/dispatches"             -d "{\"ref\":\"main\",\"inputs\":{\"duration_minutes\":\"$NEXT_MINUTES\"}}"
           echo "Successor workflow dispatched: $NEXT_MINUTES minutes"
-
-      - name: Clear bridge metadata only if still owned by this run
-        if: always()
-        run: |
-          set -e
-          CURRENT=$(curl -fsSL "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/godot-bridge.json?t=$GITHUB_RUN_ID")
-          OWNER=$(printf '%s' "$CURRENT" | jq -r '.ownerRunId // empty')
-          if [ "$OWNER" != "$GITHUB_RUN_ID" ]; then
-            echo "Bridge ownership already moved to successor; leaving metadata intact."
-            exit 0
-          fi
-          jq -n             '{status:"not_configured",engine:"Godot",url:"",runtime:"Godot 4.7.2-stable .NET"}'             > runtime/godot-bridge.json
-          git add runtime/godot-bridge.json
-          git commit -m "chore: clear expired Godot MCP bridge [skip ci]" || true
-          git push || true
