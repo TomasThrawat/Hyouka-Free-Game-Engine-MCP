@@ -1,9 +1,9 @@
 {
   "status": "ok",
   "engine": "Godot",
-  "url": "https://participants-ddr-birmingham-york.trycloudflare.com",
+  "url": "https://wiley-search-scripting-keno.trycloudflare.com",
   "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
   "source": "https://github.com/godotengine/godot",
-  "durationMinutes": "10",
-  "ownerRunId": "36446902885"
+  "durationMinutes": "300",
+  "ownerRunId": "36447626839"
 }
