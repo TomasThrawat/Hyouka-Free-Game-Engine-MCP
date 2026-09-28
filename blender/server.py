@@ -3,13 +3,11 @@ import mimetypes
 import os
 import re
 import subprocess
-import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import bpy
-
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "blender_output"
@@ -79,7 +77,6 @@ def add_primitive(data):
         "torus": lambda: bpy.ops.mesh.primitive_torus_add(major_segments=32, minor_segments=12),
         "plane": lambda: bpy.ops.mesh.primitive_plane_add(size=2.0),
     }
-
     if primitive not in ops:
         raise ValueError(f"Unsupported primitive: {primitive}")
 
@@ -89,10 +86,7 @@ def add_primitive(data):
     obj.location = location
     obj.rotation_euler = rotation
     obj.scale = scale
-
-    material = material_for(f"{name}_Material", color)
-    obj.data.materials.append(material)
-
+    obj.data.materials.append(material_for(f"{name}_Material", color))
     return object_info(obj)
 
 
@@ -142,39 +136,16 @@ def ensure_light():
 
 def basic_scene():
     clear_scene()
-    add_primitive({
-        "primitive": "plane",
-        "name": "Ground",
-        "scale": [7.0, 7.0, 7.0],
-        "color": [0.08, 0.10, 0.12, 1.0],
-    })
-    add_primitive({
-        "primitive": "cube",
-        "name": "Player",
-        "location": [0.0, 0.0, 0.75],
-        "scale": [0.8, 1.2, 0.75],
-        "color": [0.05, 0.45, 1.0, 1.0],
-    })
-    add_primitive({
-        "primitive": "cube",
-        "name": "Obstacle_A",
-        "location": [2.5, 1.2, 0.5],
-        "scale": [0.6, 0.6, 0.5],
-        "color": [1.0, 0.25, 0.08, 1.0],
-    })
-    add_primitive({
-        "primitive": "sphere",
-        "name": "Pickup",
-        "location": [-2.0, -1.0, 0.8],
-        "scale": [0.45, 0.45, 0.45],
-        "color": [1.0, 0.85, 0.1, 1.0],
-    })
+    add_primitive({"primitive":"plane","name":"Ground","scale":[7.0,7.0,7.0],"color":[0.08,0.10,0.12,1.0]})
+    add_primitive({"primitive":"cube","name":"Player","location":[0.0,0.0,0.75],"scale":[0.8,1.2,0.75],"color":[0.05,0.45,1.0,1.0]})
+    add_primitive({"primitive":"cube","name":"Obstacle_A","location":[2.5,1.2,0.5],"scale":[0.6,0.6,0.5],"color":[1.0,0.25,0.08,1.0]})
+    add_primitive({"primitive":"sphere","name":"Pickup","location":[-2.0,-1.0,0.8],"scale":[0.45,0.45,0.45],"color":[1.0,0.85,0.1,1.0]})
     ensure_camera()
     ensure_light()
     world = bpy.context.scene.world or bpy.data.worlds.new("HyoukaWorld")
     bpy.context.scene.world = world
-    world.color = (0.025, 0.03, 0.05)
-    return {"objects": [object_info(o) for o in bpy.context.scene.objects]}
+    world.color = (0.025,0.03,0.05)
+    return {"objects":[object_info(o) for o in bpy.context.scene.objects]}
 
 
 def safe_output_path(filename: str, default_name: str) -> Path:
@@ -188,9 +159,8 @@ def safe_output_path(filename: str, default_name: str) -> Path:
 
 
 def render_scene(data):
-    camera = ensure_camera()
+    ensure_camera()
     ensure_light()
-
     width = max(320, min(1280, int(data.get("width", 640))))
     height = max(180, min(720, int(data.get("height", 360))))
     filename = clean_name(data.get("filename"), "render.png")
@@ -201,8 +171,6 @@ def render_scene(data):
     scene_file = OUTPUT / ".render_scene.blend"
 
     scene = bpy.context.scene
-    # Configure rendering in the current scene, then execute the actual render
-    # in a separate Blender process so a renderer failure cannot kill the HTTP server.
     scene.render.engine = "BLENDER_WORKBENCH"
     scene.display.shading.light = "STUDIO"
     scene.display.shading.color_type = "MATERIAL"
@@ -213,19 +181,22 @@ def render_scene(data):
     scene.render.resolution_percentage = 100
     scene.render.filepath = str(target)
     scene.render.image_settings.file_format = "PNG"
-    scene.camera = camera
-
+    scene.camera = bpy.context.scene.camera
     bpy.ops.wm.save_as_mainfile(filepath=str(scene_file))
 
-    command = [
-        bpy.app.binary_path,
-        "--background",
-        str(scene_file),
-        "--render-frame",
-        "1",
-    ]
+    expr = (
+        "import bpy; "
+        "s=bpy.context.scene; "
+        "s.render.engine='BLENDER_WORKBENCH'; "
+        f"s.render.filepath={str(target)!r}; "
+        "s.render.image_settings.file_format='PNG'; "
+        "print('RENDER_TARGET', s.render.filepath, flush=True); "
+        "bpy.ops.render.render(write_still=True); "
+        "print('RENDER_DONE', s.render.filepath, flush=True)"
+    )
+
     completed = subprocess.run(
-        command,
+        [bpy.app.binary_path, "--background", str(scene_file), "--python-expr", expr],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -236,11 +207,14 @@ def render_scene(data):
     if completed.returncode != 0:
         raise RuntimeError(
             f"Render worker exited with code {completed.returncode}: "
-            f"{completed.stdout[-4000:]}"
+            f"{completed.stdout[-5000:]}"
         )
 
     if not target.is_file() or target.stat().st_size == 0:
-        raise RuntimeError("Render worker completed without producing the PNG")
+        raise RuntimeError(
+            "Render worker completed without producing the PNG. "
+            f"Worker output: {completed.stdout[-5000:]}"
+        )
 
     try:
         scene_file.unlink()
@@ -259,124 +233,100 @@ def render_scene(data):
 class Handler(BaseHTTPRequestHandler):
     server_version = "HyoukaBlenderBridge/1.0"
 
-    def json_response(self, status, payload):
-        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    def json_response(self,status,payload):
+        body=json.dumps(payload,separators=(",",":")).encode("utf-8")
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Type","application/json")
+        self.send_header("Content-Length",str(len(body)))
+        self.send_header("Access-Control-Allow-Origin","*")
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Origin","*")
+        self.send_header("Access-Control-Allow-Headers","Content-Type")
+        self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS")
         self.end_headers()
 
     def do_GET(self):
-        url = urlparse(self.path)
+        url=urlparse(self.path)
         try:
-            if url.path == "/health":
-                self.json_response(200, {
-                    "status": "ok",
-                    "engine": "Blender",
-                    "version": bpy.app.version_string,
-                    "port": PORT,
-                })
+            if url.path=="/health":
+                self.json_response(200,{"status":"ok","engine":"Blender","version":bpy.app.version_string,"port":PORT})
                 return
-
-            if url.path == "/scene/objects":
-                self.json_response(200, {
-                    "objects": [object_info(o) for o in bpy.context.scene.objects]
-                })
+            if url.path=="/scene/objects":
+                self.json_response(200,{"objects":[object_info(o) for o in bpy.context.scene.objects]})
                 return
-
             if url.path.startswith("/files/"):
-                rel = unquote(url.path[len("/files/"):])
-                target = (OUTPUT / rel).resolve()
+                rel=unquote(url.path[len("/files/"):])
+                target=(OUTPUT/rel).resolve()
                 if OUTPUT not in target.parents or not target.is_file():
-                    self.json_response(404, {"error": "artifact_not_found"})
+                    self.json_response(404,{"error":"artifact_not_found"})
                     return
-                body = target.read_bytes()
+                body=target.read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", mimetypes.guess_type(target.name)[0] or "application/octet-stream")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+                self.send_header("Content-Type",mimetypes.guess_type(target.name)[0] or "application/octet-stream")
+                self.send_header("Content-Length",str(len(body)))
+                self.send_header("Cache-Control","public, max-age=31536000, immutable")
                 self.end_headers()
                 self.wfile.write(body)
                 return
-
-            self.json_response(404, {"error": "not_found"})
+            self.json_response(404,{"error":"not_found"})
         except Exception as exc:
-            self.json_response(500, {"error": type(exc).__name__, "message": str(exc)})
+            self.json_response(500,{"error":type(exc).__name__,"message":str(exc)})
 
     def do_POST(self):
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            raw = self.rfile.read(length) if length else b"{}"
-            data = json.loads(raw.decode("utf-8"))
-
-            if self.path == "/scene/new":
+            length=int(self.headers.get("Content-Length","0"))
+            raw=self.rfile.read(length) if length else b"{}"
+            data=json.loads(raw.decode("utf-8"))
+            if self.path=="/scene/new":
                 clear_scene()
-                self.json_response(200, {"status": "ok", "message": "scene_cleared"})
+                self.json_response(200,{"status":"ok","message":"scene_cleared"})
                 return
-
-            if self.path == "/scene/basic":
-                self.json_response(200, {"status": "ok", **basic_scene()})
+            if self.path=="/scene/basic":
+                self.json_response(200,{"status":"ok",**basic_scene()})
                 return
-
-            if self.path == "/object/add":
-                self.json_response(200, {"status": "ok", "object": add_primitive(data)})
+            if self.path=="/object/add":
+                self.json_response(200,{"status":"ok","object":add_primitive(data)})
                 return
-
-            if self.path == "/object/transform":
-                name = str(data.get("name", ""))
-                obj = bpy.data.objects.get(name)
-                if obj is None:
-                    raise ValueError(f"Object not found: {name}")
-                if "location" in data:
-                    obj.location = vector3(data["location"])
-                if "rotation" in data:
-                    obj.rotation_euler = vector3(data["rotation"])
-                if "scale" in data:
-                    obj.scale = vector3(data["scale"], (1.0, 1.0, 1.0))
-                self.json_response(200, {"status": "ok", "object": object_info(obj)})
+            if self.path=="/object/transform":
+                name=str(data.get("name",""))
+                obj=bpy.data.objects.get(name)
+                if obj is None: raise ValueError(f"Object not found: {name}")
+                if "location" in data: obj.location=vector3(data["location"])
+                if "rotation" in data: obj.rotation_euler=vector3(data["rotation"])
+                if "scale" in data: obj.scale=vector3(data["scale"],(1.0,1.0,1.0))
+                self.json_response(200,{"status":"ok","object":object_info(obj)})
                 return
-
-            if self.path == "/object/delete":
-                name = str(data.get("name", ""))
-                obj = bpy.data.objects.get(name)
-                if obj is None:
-                    raise ValueError(f"Object not found: {name}")
-                bpy.data.objects.remove(obj, do_unlink=True)
-                self.json_response(200, {"status": "ok", "deleted": name})
+            if self.path=="/object/delete":
+                name=str(data.get("name",""))
+                obj=bpy.data.objects.get(name)
+                if obj is None: raise ValueError(f"Object not found: {name}")
+                bpy.data.objects.remove(obj,do_unlink=True)
+                self.json_response(200,{"status":"ok","deleted":name})
                 return
-
-            if self.path == "/scene/save":
-                target = safe_output_path(data.get("filename"), "scene.blend")
+            if self.path=="/scene/save":
+                target=safe_output_path(data.get("filename"),"scene.blend")
                 bpy.ops.wm.save_as_mainfile(filepath=str(target))
-                self.json_response(200, {"status": "ok", "filename": target.name, "path": str(target)})
+                self.json_response(200,{"status":"ok","filename":target.name,"path":str(target)})
                 return
-
-            if self.path == "/scene/render":
-                self.json_response(200, {"status": "ok", **render_scene(data)})
+            if self.path=="/scene/render":
+                self.json_response(200,{"status":"ok",**render_scene(data)})
                 return
-
-            if self.path == "/scene/export-glb":
-                target = safe_output_path(data.get("filename"), "scene.glb")
-                bpy.ops.export_scene.gltf(filepath=str(target), export_format="GLB", use_selection=False)
-                self.json_response(200, {"status": "ok", "filename": target.name, "path": str(target)})
+            if self.path=="/scene/export-glb":
+                target=safe_output_path(data.get("filename"),"scene.glb")
+                bpy.ops.export_scene.gltf(filepath=str(target),export_format="GLB",use_selection=False)
+                self.json_response(200,{"status":"ok","filename":target.name,"path":str(target)})
                 return
-
-            self.json_response(404, {"error": "not_found"})
+            self.json_response(404,{"error":"not_found"})
         except Exception as exc:
-            self.json_response(400, {"error": type(exc).__name__, "message": str(exc)})
+            self.json_response(400,{"error":type(exc).__name__,"message":str(exc)})
 
-    def log_message(self, fmt, *args):
-        print("[blender-bridge] " + fmt % args, flush=True)
+    def log_message(self,fmt,*args):
+        print("[blender-bridge] "+fmt % args,flush=True)
 
 
-print(f"Starting Blender bridge on {HOST}:{PORT}", flush=True)
-HTTPServer((HOST, PORT), Handler).serve_forever()
+print(f"Starting Blender bridge on {HOST}:{PORT}",flush=True)
+HTTPServer((HOST,PORT),Handler).serve_forever()
