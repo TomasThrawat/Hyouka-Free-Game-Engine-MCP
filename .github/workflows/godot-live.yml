@@ -3,19 +3,18 @@ name: Godot Live MCP
 on:
   push:
     branches: ["main"]
+    paths:
+      - ".github/workflows/godot-live.yml"
   workflow_dispatch:
     inputs:
       duration_minutes:
-        description: "How long to keep the Godot bridge online"
+        description: "Lease length for this bridge runner"
         required: false
-        default: "180"
+        default: "300"
         type: string
 
-concurrency:
-  group: godot-live-mcp
-  cancel-in-progress: true
-
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -130,10 +129,10 @@ jobs:
       - name: Publish live bridge metadata
         env:
           URL: ${{ steps.tunnel.outputs.url }}
-          DURATION: ${{ inputs.duration_minutes || '180' }}
+          DURATION: ${{ inputs.duration_minutes || '10' }}
         run: |
           set -e
-          jq -n             --arg url "$URL"             --arg duration "$DURATION"             '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration}'             > runtime/godot-bridge.json
+          jq -n             --arg url "$URL"             --arg duration "$DURATION"             --arg run "$GITHUB_RUN_ID"             '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration,ownerRunId:$run}'             > runtime/godot-bridge.json
           git add runtime/godot-bridge.json
           git commit -m "chore: publish live Godot MCP bridge [skip ci]"
           git push
@@ -147,22 +146,40 @@ jobs:
           curl -fsS "$URL/discover" | jq '.status, .engine, (.tools | length)'
           curl -fsS "$URL/selftest" | jq '.status, .smokeTest.status'
 
-      - name: Keep bridge online
+      - name: Hand off to successor runner
         env:
-          MINUTES: ${{ inputs.duration_minutes || '180' }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_EVENT: ${{ github.event_name }}
+          INPUT_MINUTES: ${{ inputs.duration_minutes }}
         run: |
           set -e
-          case "$MINUTES" in
-            ''|*[!0-9]*) exit 1 ;;
-          esac
-          test "$MINUTES" -ge 1
-          test "$MINUTES" -le 300
-          sleep $((MINUTES*60))
+          if [ "$RUN_EVENT" = "push" ]; then
+            HANDOFF_MINUTES=5
+            NEXT_MINUTES=300
+          else
+            case "$INPUT_MINUTES" in
+              ''|*[!0-9]*) exit 1 ;;
+            esac
+            test "$INPUT_MINUTES" -ge 60
+            test "$INPUT_MINUTES" -le 300
+            NEXT_MINUTES="$INPUT_MINUTES"
+            HANDOFF_MINUTES=$((NEXT_MINUTES-60))
+          fi
+          sleep $((HANDOFF_MINUTES*60))
+          curl -fsSL -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/godot-live.yml/dispatches"             -d "{\"ref\":\"main\",\"inputs\":{\"duration_minutes\":\"$NEXT_MINUTES\"}}"
+          echo "Successor workflow dispatched: $NEXT_MINUTES minutes"
 
-      - name: Clear bridge metadata
+      - name: Clear bridge metadata only if still owned by this run
         if: always()
         run: |
+          set -e
+          CURRENT=$(curl -fsSL "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/godot-bridge.json?t=$GITHUB_RUN_ID")
+          OWNER=$(printf '%s' "$CURRENT" | jq -r '.ownerRunId // empty')
+          if [ "$OWNER" != "$GITHUB_RUN_ID" ]; then
+            echo "Bridge ownership already moved to successor; leaving metadata intact."
+            exit 0
+          fi
           jq -n             '{status:"not_configured",engine:"Godot",url:"",runtime:"Godot 4.7.2-stable .NET"}'             > runtime/godot-bridge.json
           git add runtime/godot-bridge.json
-          git commit -m "chore: clear live Godot MCP bridge [skip ci]" || true
+          git commit -m "chore: clear expired Godot MCP bridge [skip ci]" || true
           git push || true
