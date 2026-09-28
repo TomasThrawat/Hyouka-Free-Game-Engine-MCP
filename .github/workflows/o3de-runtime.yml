@@ -1,0 +1,216 @@
+name: O3DE Live Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: "Minutes to keep the O3DE bridge online"
+        required: false
+        default: "180"
+        type: string
+
+concurrency:
+  group: o3de-live-bridge
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    name: Run O3DE 26.05 bridge
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+
+    steps:
+      - name: Checkout gateway
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install O3DE 26.05 Linux SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y             ca-certificates curl wget git jq python3
+
+          O3DE_DEB="/tmp/o3de_2605_0.deb"
+          wget -q --show-progress             -O "${O3DE_DEB}"             "https://o3debinaries.org/main/Latest/Linux/o3de_2605_0.deb"
+
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${O3DE_DEB}"
+
+          test -f /opt/O3DE/26.05/engine.json
+          test -f /opt/O3DE/26.05/scripts/o3de.py
+          test -x /opt/O3DE/26.05/scripts/o3de.sh
+
+          if [[ -x /opt/O3DE/26.05/python/get_python.sh ]]; then
+            /opt/O3DE/26.05/python/get_python.sh
+          fi
+
+          /opt/O3DE/26.05/scripts/o3de.sh register --this-engine || true
+
+      - name: Validate bridge source
+        run: |
+          python3 -m py_compile o3de/public_bridge.py
+          python3 -m py_compile o3de/bridge.py
+
+      - name: Start O3DE bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          export O3DE_ROOT="/opt/O3DE/26.05"
+          export O3DE_WORKSPACE_ROOT="${GITHUB_WORKSPACE}"
+          export O3DE_BRIDGE_PORT="9765"
+
+          nohup python3 o3de/public_bridge.py             > /tmp/o3de-bridge.log 2>&1 &
+          echo $! > /tmp/o3de-bridge.pid
+
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:9765/health" >/tmp/o3de-health.json; then
+              cat /tmp/o3de-health.json
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS "http://127.0.0.1:9765/selftest" | tee /tmp/o3de-selftest.json
+
+          python3 - <<'PY'
+          import json
+          data=json.load(open("/tmp/o3de-selftest.json"))
+          assert data["status"] == "ok", data
+          assert data["version"]["returnCode"] == 0, data
+          assert data["getRegistered"]["returnCode"] == 0, data
+          PY
+
+      - name: Install pinned Cloudflare tunnel client
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="2026.9.3"
+          URL="https://github.com/cloudflare/cloudflared/releases/download/${VERSION}/cloudflared-linux-amd64"
+          EXPECTED="96d39ad"
+          curl -fsSL "${URL}" -o /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared --version
+
+      - name: Start HTTPS Quick Tunnel
+        id: tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          nohup /tmp/cloudflared tunnel             --no-autoupdate             --url http://127.0.0.1:9765             >/tmp/cloudflared.log 2>&1 &
+
+          echo $! > /tmp/cloudflared.pid
+
+          for _ in $(seq 1 45); do
+            URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true)"
+            if [[ -n "${URL}" ]]; then
+              echo "url=${URL}" >> "$GITHUB_OUTPUT"
+              echo "O3DE bridge URL: ${URL}"
+              break
+            fi
+            sleep 2
+          done
+
+          URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1 || true)"
+          test -n "${URL}"
+
+          curl -fsS "${URL}/health"
+          echo
+          curl -fsS "${URL}/selftest"
+          echo
+
+      - name: Publish live runtime manifest
+        shell: bash
+        env:
+          BRIDGE_URL: ${{ steps.tunnel.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          jq -n             --arg url "${BRIDGE_URL}"             '{
+              status: "ok",
+              engine: "O3DE",
+              url: $url,
+              transport: "http",
+              tokenRequired: false,
+              mode: "public-cli-only",
+              runtime: "GitHub Actions O3DE 26.05 + Cloudflare Quick Tunnel",
+              capabilities: [
+                "first-party O3DE top-level CLI",
+                "dynamic CLI discovery",
+                "CLI help probing",
+                "safe universal invoke for o3de-cli:*"
+              ],
+              notes: "Temporary development runtime. Quick Tunnel URL changes on every workflow run."
+            }' > runtime/o3de-bridge.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git rebase origin/main || true
+
+          git add runtime/o3de-bridge.json
+          git diff --cached --quiet || git commit -m "chore: publish live O3DE bridge URL [skip ci]"
+          git push origin HEAD:main
+
+          echo "Published bridge URL: ${BRIDGE_URL}"
+
+      - name: Keep bridge online
+        shell: bash
+        env:
+          DURATION_MINUTES: ${{ inputs.duration_minutes }}
+        run: |
+          set -euo pipefail
+          DURATION="${DURATION_MINUTES:-180}"
+          if ! [[ "${DURATION}" =~ ^[0-9]+$ ]]; then
+            echo "duration_minutes must be numeric" >&2
+            exit 1
+          fi
+          if (( DURATION < 5 || DURATION > 350 )); then
+            echo "duration_minutes must be between 5 and 350" >&2
+            exit 1
+          fi
+
+          echo "Bridge online for approximately ${DURATION} minutes."
+          for _ in $(seq 1 "${DURATION}"); do
+            curl -fsS http://127.0.0.1:9765/health >/dev/null
+            sleep 60
+          done
+
+      - name: Clear expired runtime manifest
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          jq -n '{
+            status: "not_configured",
+            engine: "O3DE",
+            url: "",
+            transport: "http",
+            tokenRequired: false,
+            mode: "public-cli-only",
+            runtime: "no active bridge",
+            notes: "Dispatch the O3DE Live Bridge workflow to start a temporary live runtime."
+          }' > runtime/o3de-bridge.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git rebase origin/main || true
+
+          git add runtime/o3de-bridge.json
+          git diff --cached --quiet || git commit -m "chore: clear expired O3DE bridge URL [skip ci]"
+          git push origin HEAD:main || true
+
+          if [[ -f /tmp/cloudflared.log ]]; then
+            cat /tmp/cloudflared.log
+          fi
+          if [[ -f /tmp/o3de-bridge.log ]]; then
+            cat /tmp/o3de-bridge.log
+          fi

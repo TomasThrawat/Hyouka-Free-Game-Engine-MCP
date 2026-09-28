@@ -26,6 +26,7 @@ jobs:
       - name: Validate O3DE bridge
         run: |
           python3 -m py_compile o3de/bridge.py
+          python3 -m py_compile o3de/public_bridge.py
           python3 o3de/bridge.py --self-test
       - name: Verify no legacy Blender integration
         shell: bash

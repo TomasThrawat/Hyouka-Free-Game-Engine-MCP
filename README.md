@@ -1,24 +1,27 @@
 # Hyouka O3DE HTTP MCP
 
-A Vercel-hosted Streamable HTTP MCP gateway for the open-source Open 3D Engine (O3DE).
+Vercel-hosted Streamable HTTP MCP gateway for Open 3D Engine (O3DE).
 
-## Full callable-tool gateway
+## Live O3DE runtime
 
-The MCP is designed around **dynamic tool discovery**, not a hard-coded list.
+The repository now includes a GitHub Actions workflow named **O3DE Live Bridge**.
 
-It can discover and invoke:
+When dispatched, it:
 
-- all top-level commands dynamically detected from `scripts/o3de.py`
-- callable Python scripts in O3DE script/tool trees
-- O3DE shell scripts under script/tool trees
-- built O3DE executables found in the engine/tool/build trees
-- CMake `add_executable` targets
-- CMake `add_custom_target` targets
-- CTest `add_test(NAME ...)` registrations
-- long-running/background tools with process tracking
-- current tool `--help` output
+1. installs the official O3DE 26.05 Linux Debian package
+2. starts the secure public O3DE CLI bridge on port 9765
+3. verifies O3DE with `--version` and `get-registered`
+4. creates a temporary HTTPS Cloudflare Quick Tunnel
+5. publishes the live bridge URL to `runtime/o3de-bridge.json`
+6. keeps the runtime alive for the selected duration
 
-The MCP surface is:
+The Vercel MCP reads that manifest dynamically, so no Vercel code change is needed when the temporary tunnel URL changes.
+
+Cloudflare documents Quick Tunnels as temporary development/testing tunnels. They generate a random `trycloudflare.com` hostname and do not provide an uptime guarantee. citeturn331166search0
+
+## MCP capabilities
+
+The MCP exposes dynamic O3DE tooling:
 
 - `o3de_discover_tools`
 - `o3de_find_tools`
@@ -31,61 +34,39 @@ The MCP surface is:
 - `o3de_cli_help`
 - `o3de_status`
 
-The older individual top-level shortcuts remain for compatibility.
+The compatibility top-level shortcuts are retained.
 
-## Important meaning of "all"
+## Public runtime mode
 
-O3DE also contains C++ classes, components, editor APIs, and internal functions that are not independently executable interfaces. Those are not fabricated into fake MCP tools.
+Without a bridge credential, the live public runtime is intentionally limited to first-party O3DE top-level CLI tools.
 
-Instead, every callable artifact discoverable from the installed O3DE tree is addressable through a stable `toolId` and the universal dispatcher.
+`o3de_invoke_tool` can execute discovered IDs such as:
 
-Newly built executables and newly added Python/CMake tools become discoverable without changing the Vercel route.
+`o3de-cli:get-global-project`
+`o3de-cli:get-registered`
+`o3de-cli:register`
+
+Arbitrary shell scripts, arbitrary executables, CMake builds, CTest execution, and background processes remain blocked in public mode. They are available through the full private bridge when a securely managed `O3DE_BRIDGE_TOKEN` is configured.
 
 ## Architecture
 
 ChatGPT / MCP client
 -> Composio
 -> Vercel Streamable HTTP MCP
--> HTTPS O3DE universal bridge
--> dynamic O3DE inventory
--> scripts / executables / CMake / CTest
--> O3DE
+-> runtime/o3de-bridge.json
+-> HTTPS O3DE bridge
+-> O3DE 26.05
 
-Vercel is the protocol/control layer. The O3DE process runs on a separate host because Vercel Functions are not a persistent O3DE installation.
+## Runtime limitations
 
-## Runtime configuration
-
-Bridge:
-
-- `O3DE_ROOT`: O3DE source/installation root
-- `O3DE_WORKSPACE_ROOT`: allowed working-directory boundary
-- `O3DE_BUILD_DIR`: configured CMake/CTest build tree
-- `O3DE_BRIDGE_PORT`: default `9765`
-- `O3DE_BRIDGE_TOKEN`: recommended for public bridge URLs
-
-Vercel:
-
-- `O3DE_BRIDGE_URL`
-- `O3DE_BRIDGE_TOKEN`
-- optionally `O3DE_BRIDGE_CONFIG_URL`
-
-The default runtime manifest is `runtime/o3de-bridge.json`.
-
-## Safety model
-
-The bridge:
-
-- uses argv arrays and `shell=False`
-- validates and limits arguments
-- restricts command cwd to `O3DE_WORKSPACE_ROOT`
-- restricts discovered callable files to the O3DE engine root
-- excludes third-party/cache trees
-- supports an optional shared bearer token
+The GitHub Actions runtime is temporary. It stops when the workflow ends or is cancelled. The Quick Tunnel URL also changes on each run. For a persistent production runtime, replace the Quick Tunnel with a managed Cloudflare Tunnel or another persistent HTTPS host. Cloudflare recommends named/managed tunnels for production use. citeturn331166search1turn331166search6
 
 ## Source
 
-The gateway was built from the O3DE source repository:
+O3DE source repository:
 
 https://github.com/o3de/o3de
 
-The source audit covered O3DE script/tool directories plus targeted searches for Python entry points, Asset Processor, Project Manager, CMake tool targets, and automated testing.
+Official Linux package:
+
+https://o3debinaries.org/download/linux.html
