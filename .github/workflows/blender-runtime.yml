@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl libegl1 libgl1
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl libegl1 libgl1 python3-numpy
           blender --version | head -n 3
           ldconfig -p | grep -E 'libEGL\.so\.1|libGL\.so\.1'
 
@@ -86,8 +86,12 @@ jobs:
 
           test -s blender_output/ci-test.glb
 
+          curl --fail-with-body -X POST             -H "Content-Type: application/json"             --data '{"filename":"ci-test.blend"}'             http://127.0.0.1:9765/scene/save
+
+          test -s blender_output/ci-test.blend
+
           echo "Smoke test artifacts:"
-          ls -lh blender_output/ci-test.png blender_output/ci-test.glb /tmp/ci-test-download.png
+          ls -lh blender_output/ci-test.png blender_output/ci-test.glb blender_output/ci-test.blend /tmp/ci-test-download.png
 
       - name: Start Cloudflare Quick Tunnel
         shell: bash
