@@ -1,6 +1,9 @@
 {
-  "status": "not_configured",
+  "status": "ok",
   "engine": "Godot",
-  "url": "",
-  "runtime": "Godot 4.7.2-stable .NET"
+  "url": "https://carroll-bronze-novel-lived.trycloudflare.com",
+  "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
+  "source": "https://github.com/godotengine/godot",
+  "durationMinutes": "10",
+  "ownerRunId": "36446640960"
 }
