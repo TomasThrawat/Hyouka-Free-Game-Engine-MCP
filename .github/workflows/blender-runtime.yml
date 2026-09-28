@@ -8,7 +8,6 @@ on:
       - "blender/**"
       - "app/api/mcp/**"
       - ".github/workflows/blender-runtime.yml"
-      - ".devcontainer/**"
 
 concurrency:
   group: free-blender-runtime
@@ -31,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl python3
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y blender curl
           blender --version | head -n 3
 
       - name: Install cloudflared
@@ -39,15 +38,9 @@ jobs:
         run: |
           set -euo pipefail
           ARCH="$(dpkg --print-architecture)"
-          case "$ARCH" in
-            amd64) ASSET="cloudflared-linux-amd64" ;;
-            arm64) ASSET="cloudflared-linux-arm64" ;;
-            *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
-          esac
-
-          URL="$(curl -fsSL https://api.github.com/repos/cloudflare/cloudflared/releases/latest             | python3 -c 'import json,sys; d=json.load(sys.stdin); n=sys.argv[1]; print(next(a["browser_download_url"] for a in d["assets"] if a["name"] == n))' "$ASSET")"
-
-          sudo install -m 0755 <(curl -fsSL "$URL") /usr/local/bin/cloudflared
+          DEB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
+          curl -fL "$DEB_URL" -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
           cloudflared --version
 
       - name: Start Blender bridge
@@ -109,17 +102,17 @@ jobs:
 
       - name: Publish live tunnel URL
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
           python3 - "$TUNNEL_URL" > runtime/blender-bridge.json <<'PY'
           import json, sys
+          from datetime import datetime, timezone
           print(json.dumps({
               "status": "ok",
               "engine": "Blender",
               "url": sys.argv[1],
-              "createdAt": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+              "createdAt": datetime.now(timezone.utc).isoformat(),
               "transport": "http",
               "runtime": "GitHub Actions public runner",
               "policy": "free-only-no-pc",
