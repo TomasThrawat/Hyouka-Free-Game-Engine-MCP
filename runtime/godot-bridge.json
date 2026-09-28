@@ -1,0 +1,8 @@
+{
+  "status": "not_configured",
+  "engine": "Godot",
+  "url": "",
+  "runtime": "Godot 4.7.2-stable Linux x86_64",
+  "source": "https://github.com/godotengine/godot",
+  "notes": "Run the Godot Live Bridge workflow to start a temporary runtime."
+}

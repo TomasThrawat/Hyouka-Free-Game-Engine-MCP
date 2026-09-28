@@ -1,0 +1,6 @@
+[application]
+config/name="Hyouka Godot MCP Smoke Test"
+run/main_scene=""
+[display]
+window/size/viewport_width=320
+window/size/viewport_height=180

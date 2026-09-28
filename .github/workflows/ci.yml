@@ -1,37 +1,21 @@
 name: Build MCP
-
 on:
   push:
     branches: ["main"]
   pull_request:
-
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/cache@v6
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-
       - run: npm install
       - run: npm run build
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
-      - name: Validate O3DE bridge
+      - run: npm audit --omit=dev --audit-level=high
+      - run: python3 -m py_compile godot/public_bridge.py
+      - run: test -f runtime/godot-smoke-test/project.godot
+      - name: Verify legacy engine removal
         run: |
-          python3 -m py_compile o3de/bridge.py
-          python3 -m py_compile o3de/public_bridge.py
-          python3 o3de/bridge.py --self-test
-      - name: Verify no legacy Blender integration
-        shell: bash
-        run: |
-          if grep -RniE 'Blender|blender/' app o3de runtime README.md .devcontainer 2>/dev/null; then
-            echo "Legacy Blender integration found"
-            exit 1
-          fi
+          ! grep -RniE "Blender|blender/|O3DE|o3de" app godot runtime .devcontainer .github README.md 2>/dev/null
