@@ -16,6 +16,6 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: python3 -m py_compile godot/public_bridge.py
       - run: test -f runtime/godot-smoke-test/project.godot
-      - name: Verify legacy engine removal
+      - name: Verify repository is Godot-only
         run: |
-          ! grep -RniE "Blender|blender/|O3DE|o3de" app godot runtime .devcontainer .github README.md 2>/dev/null
+          ! grep -RniE "O3DE|o3de|Blender|blender/" app godot runtime .devcontainer .github README.md 2>/dev/null
