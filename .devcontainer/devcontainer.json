@@ -1,0 +1,6 @@
+{
+  "name":"Hyouka Free Game Engine MCP",
+  "image":"mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "postCreateCommand":"npm install",
+  "forwardPorts":[3000]
+}
