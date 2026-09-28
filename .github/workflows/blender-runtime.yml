@@ -10,7 +10,7 @@ on:
       - ".github/workflows/blender-runtime.yml"
 
 concurrency:
-  group: free-blender-runtime
+  group: free-blender-runtime-${{ github.run_id }}
   cancel-in-progress: false
 
 permissions:
@@ -89,9 +89,6 @@ jobs:
           curl --fail-with-body -X POST             -H "Content-Type: application/json"             --data '{"filename":"ci-test.blend"}'             http://127.0.0.1:9765/scene/save
 
           test -s blender_output/ci-test.blend
-
-          echo "Smoke test artifacts:"
-          ls -lh             blender_output/ci-test.png             blender_output/ci-test.glb             blender_output/ci-test.blend             /tmp/ci-test-download.png
 
       - name: Start Cloudflare Quick Tunnel
         shell: bash
