@@ -2,6 +2,8 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
+import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -188,31 +190,70 @@ def safe_output_path(filename: str, default_name: str) -> Path:
 def render_scene(data):
     camera = ensure_camera()
     ensure_light()
-    width = int(data.get("width", 640))
-    height = int(data.get("height", 360))
-    width = max(320, min(1280, width))
-    height = max(180, min(720, height))
+
+    width = max(320, min(1280, int(data.get("width", 640))))
+    height = max(180, min(720, int(data.get("height", 360))))
     filename = clean_name(data.get("filename"), "render.png")
     if not filename.lower().endswith(".png"):
         filename += ".png"
+
     target = safe_output_path(filename, "render.png")
+    scene_file = OUTPUT / ".render_scene.blend"
 
     scene = bpy.context.scene
-    # Workbench is deterministic and does not require GPU/display access in headless CI.
+    # Configure rendering in the current scene, then execute the actual render
+    # in a separate Blender process so a renderer failure cannot kill the HTTP server.
     scene.render.engine = "BLENDER_WORKBENCH"
     scene.display.shading.light = "STUDIO"
     scene.display.shading.color_type = "MATERIAL"
-    scene.display.shading.show_shadows = True
-    scene.display.shading.show_cavity = True
+    scene.display.shading.show_shadows = False
+    scene.display.shading.show_cavity = False
     scene.render.resolution_x = width
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100
     scene.render.filepath = str(target)
     scene.render.image_settings.file_format = "PNG"
     scene.camera = camera
-    bpy.ops.render.render(write_still=True)
 
-    return {"filename": filename, "path": str(target), "size": [width, height], "engine": "BLENDER_WORKBENCH"}
+    bpy.ops.wm.save_as_mainfile(filepath=str(scene_file))
+
+    command = [
+        bpy.app.binary_path,
+        "--background",
+        str(scene_file),
+        "--render-frame",
+        "1",
+    ]
+    completed = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Render worker exited with code {completed.returncode}: "
+            f"{completed.stdout[-4000:]}"
+        )
+
+    if not target.is_file() or target.stat().st_size == 0:
+        raise RuntimeError("Render worker completed without producing the PNG")
+
+    try:
+        scene_file.unlink()
+    except OSError:
+        pass
+
+    return {
+        "filename": filename,
+        "path": str(target),
+        "size": [width, height],
+        "engine": "BLENDER_WORKBENCH",
+        "rendererProcess": "separate-blender-process",
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
