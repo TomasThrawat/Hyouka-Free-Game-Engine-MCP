@@ -6,7 +6,7 @@
     "ref": "4.7.2-stable",
     "path": "main/main.cpp"
   },
-  "count": 115,
+  "count": 116,
   "flags": [
     "--accessibility",
     "--accessibility-driver",
@@ -92,11 +92,13 @@
     "--rendering-method",
     "--resolution",
     "--scene",
+    "--screen",
     "--script",
     "--single-threaded-scene",
     "--single-window",
     "--skip-breakpoints",
     "--tablet-driver",
+    "--test",
     "--test-rd-creation",
     "--test-rd-support",
     "--text-driver",
@@ -121,7 +123,6 @@
     "-s",
     "-t",
     "-v",
-    "-w",
-    "--test"
+    "-w"
   ]
 }
