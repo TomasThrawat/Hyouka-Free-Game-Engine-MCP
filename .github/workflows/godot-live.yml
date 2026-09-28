@@ -25,7 +25,10 @@ jobs:
 
     steps:
       - name: Configure Git defaults
-        run: git config --global init.defaultBranch main
+        run: |
+          git config --global init.defaultBranch main
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - uses: actions/checkout@v7
 
