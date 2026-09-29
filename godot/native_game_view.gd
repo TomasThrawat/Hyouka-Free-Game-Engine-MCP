@@ -29,10 +29,10 @@ func _process(_delta: float) -> void:
         if client.get_status() != StreamPeerSocket.STATUS_CONNECTED:
             clients.erase(client)
             continue
-        var available := client.get_available_bytes()
+        var available: int = client.get_available_bytes()
         if available <= 0:
             continue
-        var request := client.get_string(available)
+        var request: String = client.get_string(available)
         _handle_request(client, request)
         if clients.has(client):
             clients.erase(client)
