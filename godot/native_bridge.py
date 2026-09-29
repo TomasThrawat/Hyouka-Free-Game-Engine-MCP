@@ -150,7 +150,7 @@ def native_tools():
     items.extend([
         {"id":"godot-game-status","kind":"godot","callable":True,"description":"Read live state directly from a running Godot game process. Arg 1 is the PID returned by godot-run-project."},
         {"id":"godot-game-view","kind":"godot","callable":True,"description":"Capture the current rendered Godot Viewport directly from the running game. The pixels come from Godot Viewport.get_texture().get_image(). No browser or external desktop capture."},
-        {"id":"godot-game-input","kind":"godot","callable":True,"description":"Inject a real Godot InputEvent directly into the running game. Arg 1 is PID; arg 2 is a JSON event such as {"type":"click","x":100,"y":200} or {"type":"tap","x":100,"y":200}."},
+        {"id":"godot-game-input","kind":"godot","callable":True,"description":"Inject a real Godot InputEvent directly into the running game. Arg 1 is PID; arg 2 is a JSON event object for click, tap, motion, touch, key, or action input."},
     ])
     return items
 
