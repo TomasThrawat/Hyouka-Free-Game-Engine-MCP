@@ -52,6 +52,30 @@ def clear_session(project_dir):
         session_file(project_dir).unlink(missing_ok=True)
     except Exception:
         pass
+
+def pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+def read_logs(session):
+    stdout = ""
+    stderr = ""
+    try:
+        path = Path(str(session.get("stdoutLog", "")))
+        if path.is_file():
+            stdout = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        path = Path(str(session.get("stderrLog", "")))
+        if path.is_file():
+            stderr = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    return stdout, stderr
 ORIGINAL_RUN = bridge.run
 ORIGINAL_INVOKE = bridge.invoke
 ORIGINAL_TOOLS = bridge.tools
