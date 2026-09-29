@@ -117,7 +117,15 @@ def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
     if not proc or not info:
         raise ValueError("PID is not a running Godot project with native control")
     if proc[0].poll() is not None:
-        raise ValueError("Godot game process is no longer running")
+        return {
+            "status":"stopped",
+            "engine":"Godot",
+            "pid":pid,
+            "returnCode":proc[0].returncode,
+            "stdout":proc[0].stdout.read() if proc[0].stdout else "",
+            "stderr":proc[0].stderr.read() if proc[0].stderr else "",
+            "message":"Godot game process is no longer running"
+        }
     base = "http://127.0.0.1:" + str(info["port"])
     if tool_id == "godot-game-status":
         with urlopen(Request(base + "/state"), timeout=5) as response:
