@@ -163,6 +163,81 @@ jobs:
           done
           exit 1
 
+      - name: Verify native Godot view and input end to end
+        run: |
+          set -e
+          TEST_ROOT="$GITHUB_WORKSPACE/.godot-native-e2e"
+          rm -rf "$TEST_ROOT"
+          mkdir -p "$TEST_ROOT"
+          cat > "$TEST_ROOT/project.godot" <<'EOF'
+          [application]
+          config/name="Godot MCP Native E2E"
+          run/main_scene="res://Main.tscn"
+          [display]
+          window/size/viewport_width=320
+          window/size/viewport_height=200
+          [rendering]
+          renderer/rendering_method="gl_compatibility"
+          renderer/rendering_method.mobile="gl_compatibility"
+          EOF
+          cat > "$TEST_ROOT/Main.tscn" <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://main.gd" id="1"]
+          [node name="Root" type="Node2D"]
+          script = ExtResource("1")
+          EOF
+          cat > "$TEST_ROOT/main.gd" <<'EOF'
+          extends Node2D
+          func _ready() -> void:
+              var background := ColorRect.new()
+              background.position = Vector2.ZERO
+              background.size = Vector2(320, 200)
+              background.color = Color("#20242a")
+              background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+              add_child(background)
+              var button := Button.new()
+              button.name = "NativeTestButton"
+              button.text = "CLICK ME"
+              button.position = Vector2(110, 80)
+              button.size = Vector2(100, 40)
+              button.pressed.connect(_on_pressed)
+              add_child(button)
+          func _on_pressed() -> void:
+              var file := FileAccess.open(ProjectSettings.globalize_path("res://clicked.txt"), FileAccess.WRITE)
+              if file:
+                  file.store_string("clicked")
+                  file.close()
+          EOF
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--headless","--path",$path,"--audio-driver","Dummy","--disable-vsync"],background:true,timeoutSeconds:30}')
+          START=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
+          echo "$START"
+          PID=$(jq -r '.pid' <<<"$START")
+          test "$PID" != "null"
+          sleep 2
+          STATUS=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
+          echo "$STATUS" | jq '{status,pid,viewportWidth,viewportHeight}'
+          test "$(jq -r '.status' <<<"$STATUS")" = "ok"
+          VIEW=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
+          echo "$VIEW" | jq '{status,pid,width,height,contentType:(.content[0].mimeType // null),hasImage:((.content[0].data // "") | length > 0)}'
+          test "$(jq -r '.status' <<<"$VIEW")" = "ok"
+          test "$(jq -r '.content[0].mimeType' <<<"$VIEW")" = "image/png"
+          jq -r '.content[0].data' <<<"$VIEW" | base64 -d > /tmp/godot-native-e2e.png
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("/tmp/godot-native-e2e.png")
+          b=p.read_bytes()
+          assert b.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG"
+          print("PNG bytes:", len(b))
+          PY
+          INPUT_JSON=$(jq -nc --arg pid "$PID" '{toolId:"godot-game-input",args:[$pid,"{\"type\":\"click\",\"x\":160,\"y\":100}"]}')
+          INPUT=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$INPUT_JSON")
+          echo "$INPUT"
+          test "$(jq -r '.status' <<<"$INPUT")" = "ok"
+          sleep 1
+          test -f "$TEST_ROOT/clicked.txt"
+          grep -qx "clicked" "$TEST_ROOT/clicked.txt"
+          curl -fsS -X POST http://127.0.0.1:9765/stop -H 'content-type: application/json' -d "$(jq -nc --argjson pid "$PID" '{pid:$pid}')"
+          rm -rf "$TEST_ROOT"
       - name: Verify public bridge
         env:
           URL: ${{ steps.tunnel.outputs.url }}
