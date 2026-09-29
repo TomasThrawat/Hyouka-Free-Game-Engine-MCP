@@ -65,7 +65,7 @@ func _parse_query(text: String) -> Dictionary:
     for pair in text.split("&", false):
         var kv := pair.split("=", false, 1)
         var key := kv[0].uri_decode()
-        result[key] = kv.size() > 1 ? kv[1].uri_decode() : ""
+        result[key] = kv[1].uri_decode() if kv.size() > 1 else ""
     return result
 
 func _queue_view(client: StreamPeerTCP) -> void:
