@@ -1,9 +1,9 @@
 {
   "status": "ok",
   "engine": "Godot",
-  "url": "https://lan-honors-whose-plain.trycloudflare.com",
+  "url": "https://ethics-rebound-buyer-marvel.trycloudflare.com",
   "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
   "source": "https://github.com/godotengine/godot",
-  "durationMinutes": "10",
-  "ownerRunId": "36526964411"
+  "durationMinutes": "300",
+  "ownerRunId": "36527130465"
 }
