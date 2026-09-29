@@ -85,6 +85,10 @@ func _finish_view(client: StreamPeerTCP) -> void:
     if image == null:
         _send_json(client, 500, {"status":"error","message":"viewport image unavailable"})
         return
+    if image.get_width() <= 0 or image.get_height() <= 0:
+        _send_json(client, 500, {"status":"error","message":"viewport image has invalid size"})
+        return
+    image.convert(Image.FORMAT_RGBA8)
     var png := image.save_png_to_buffer()
     if png.is_empty():
         _send_json(client, 500, {"status":"error","message":"PNG capture failed"})
