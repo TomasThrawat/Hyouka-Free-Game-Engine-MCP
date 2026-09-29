@@ -1,11 +1,11 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "providers": [
     {
       "id": "assetmcp-vercel",
       "name": "ASSETMCP",
       "description": "Remote free asset MCP for Kenney, Poly Haven, ambientCG, OpenGameArt, Openverse, itch.io, Godot Asset Library and related asset sources.",
-      "url": "https://assetmcp-vercel-http-nev99e96p-hyouka1.vercel.app/api/mcp",
+      "url": "https://assetmcp-vercel-http.vercel.app/api/mcp",
       "urlEnv": "HYOUKA_ASSETMCP_URL",
       "enabled": true,
       "source": "https://github.com/TomasThrawat/ASSETMCP-Vercel-HTTP",
