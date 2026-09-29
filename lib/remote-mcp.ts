@@ -31,6 +31,12 @@ type Registry = {
   providers: RemoteMcpProvider[];
 };
 
+type CapabilityMatrix = {
+  version: string;
+  goal: string;
+  domains: Array<Record<string, unknown>>;
+};
+
 type ConnectedProvider = {
   provider: RemoteMcpProvider;
   client: Client;
@@ -44,7 +50,15 @@ type ConnectedProvider = {
 const REGISTRY_URL =
   "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/free-mcp-providers.json";
 
+const CAPABILITY_MATRIX_URL =
+  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/free-game-capability-matrix.json";
+
 let registryCache: { expiresAt: number; registry: Registry } | null = null;
+let capabilityCache: {
+  expiresAt: number;
+  matrix: CapabilityMatrix;
+} | null = null;
+
 const remoteCache = new Map<
   string,
   { expiresAt: number; entry?: ConnectedProvider; error?: string }
@@ -77,11 +91,42 @@ async function loadRegistry(): Promise<Registry> {
   return registry;
 }
 
+async function loadCapabilityMatrix(): Promise<CapabilityMatrix> {
+  const now = Date.now();
+  if (capabilityCache && capabilityCache.expiresAt > now) {
+    return capabilityCache.matrix;
+  }
+
+  const response = await fetch(CAPABILITY_MATRIX_URL + "?t=" + now, {
+    cache: "no-store",
+    headers: { "cache-control": "no-cache", pragma: "no-cache" },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      "Capability matrix fetch failed: HTTP " + response.status,
+    );
+  }
+
+  const value = (await response.json()) as CapabilityMatrix;
+  const matrix =
+    value &&
+    typeof value.version === "string" &&
+    typeof value.goal === "string" &&
+    Array.isArray(value.domains)
+      ? value
+      : { version: "invalid", goal: "unknown", domains: [] };
+
+  capabilityCache = { expiresAt: now + 60_000, matrix };
+  return matrix;
+}
+
 function resolveUrl(provider: RemoteMcpProvider): string | null {
   if (provider.urlEnv) {
     const value = process.env[provider.urlEnv]?.trim();
     if (value) return value.replace(/\/$/, "");
   }
+
   return provider.url?.trim().replace(/\/$/, "") || null;
 }
 
@@ -108,7 +153,7 @@ async function connectProvider(
 
   const client = new Client({
     name: "hyouka-free-game-engine-mcp",
-    version: "1.1.1",
+    version: "1.2.0",
   });
 
   await client.connect(transport);
@@ -253,6 +298,45 @@ export async function remoteMcpStatus() {
     return {
       version: "unknown",
       providers: [],
+      error: String(error),
+    };
+  }
+}
+
+export async function gameCapabilityAudit() {
+  try {
+    const [matrix, remote] = await Promise.all([
+      loadCapabilityMatrix(),
+      remoteMcpStatus(),
+    ]);
+
+    const providerCapabilities = remote.providers.map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      configured: provider.configured,
+      connected: provider.connected,
+      toolCount: provider.toolCount,
+      capabilities: provider.capabilities,
+      error: provider.error,
+    }));
+
+    return {
+      matrixVersion: matrix.version,
+      goal: matrix.goal,
+      domains: matrix.domains,
+      remoteProviders: providerCapabilities,
+      connectedToolCount: providerCapabilities.reduce(
+        (sum, provider) => sum + provider.toolCount,
+        0,
+      ),
+    };
+  } catch (error) {
+    return {
+      matrixVersion: "unknown",
+      goal: "unknown",
+      domains: [],
+      remoteProviders: [],
+      connectedToolCount: 0,
       error: String(error),
     };
   }
