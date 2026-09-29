@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
-import { registerRemoteMcpProviders, remoteMcpStatus } from "../../../../lib/remote-mcp";
+import { registerRemoteMcpProviders, remoteMcpStatus } from "../../../lib/remote-mcp";
 
 const CONFIG =
   "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/godot-bridge.json";
