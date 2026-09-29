@@ -11,6 +11,7 @@ export type RemoteMcpProvider = {
   description?: string;
   url?: string;
   urlEnv?: string;
+  urlEnvFallback?: string;
   tokenEnv?: string;
   enabled?: boolean;
   source?: string;
@@ -122,8 +123,12 @@ async function loadCapabilityMatrix(): Promise<CapabilityMatrix> {
 }
 
 function resolveUrl(provider: RemoteMcpProvider): string | null {
-  if (provider.urlEnv) {
-    const value = process.env[provider.urlEnv]?.trim();
+  const envKeys = [provider.urlEnv, provider.urlEnvFallback].filter(
+    (key): key is string => Boolean(key),
+  );
+
+  for (const key of envKeys) {
+    const value = process.env[key]?.trim();
     if (value) return value.replace(/\/$/, "");
   }
 
