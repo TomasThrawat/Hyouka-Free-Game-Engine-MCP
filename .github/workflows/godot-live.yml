@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/godot-live.yml"
+      - "godot/public_bridge.py"
+      - "runtime/godot-official-cli.json"
   workflow_dispatch:
     inputs:
       duration_minutes:
