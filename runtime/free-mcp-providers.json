@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -25,8 +25,9 @@
     {
       "id": "blender-dcc",
       "name": "DCC-MCP Blender",
-      "description": "Typed Blender automation over Streamable HTTP when a Blender instance is running.",
+      "description": "Typed Blender automation over Streamable HTTP when a Blender instance is running. Uses the explicit MCP URL first and the existing Hyouka Blender bridge environment as fallback.",
       "urlEnv": "HYOUKA_BLENDER_MCP_URL",
+      "urlEnvFallback": "BLENDER_BRIDGE_URL",
       "enabled": true,
       "source": "https://github.com/dcc-mcp/dcc-mcp-blender",
       "license": "MIT",
