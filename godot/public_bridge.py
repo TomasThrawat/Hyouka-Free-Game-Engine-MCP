@@ -6,14 +6,45 @@ from urllib.parse import urlparse, parse_qs
 HOST=os.getenv("GODOT_BRIDGE_HOST","0.0.0.0"); PORT=int(os.getenv("GODOT_BRIDGE_PORT","9765"))
 GODOT=Path(os.getenv("GODOT_BIN","/opt/godot/4.7.2/godot")).resolve(); ROOT=Path(os.getenv("GODOT_WORKSPACE_ROOT",Path.cwd())).resolve(); PROCS={}
 OFFICIAL_MANIFEST=ROOT/"runtime/godot-official-cli.json"
+_ALLOWED_ROOTS_RAW=os.getenv("GODOT_ALLOWED_ROOTS","/workspace")
+ALLOWED_ROOTS=[ROOT]+[Path(x).expanduser().resolve() for x in _ALLOWED_ROOTS_RAW.split(os.pathsep) if x.strip()]
 def inside(p=None):
- x=(ROOT if not p else Path(p).expanduser().resolve()); x.relative_to(ROOT)
+ x=(ROOT if not p else Path(p).expanduser().resolve())
+ if not any(x == r or r in x.parents for r in ALLOWED_ROOTS):
+  raise ValueError(f"path outside allowed roots: {x}")
  if not x.exists(): raise ValueError("path does not exist")
  return x
 def args_ok(a):
  if not isinstance(a,list) or len(a)>128: raise ValueError("args must be a list of <=128 strings")
  if any(not isinstance(x,str) or "\x00" in x or len(x)>4096 for x in a): raise ValueError("invalid argument")
  return a
+
+def sync_github_repo(repo_url, repo_ref="main"):
+ repo_url=str(repo_url or "").strip()
+ repo_ref=str(repo_ref or "main").strip()
+ if not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?", repo_url):
+  raise ValueError("repo_url must be a GitHub HTTPS repository URL")
+ if not re.fullmatch(r"[A-Za-z0-9._/-]+", repo_ref) or ".." in repo_ref:
+  raise ValueError("invalid repo_ref")
+ parsed=urlparse(repo_url)
+ parts=[x for x in parsed.path.strip("/").split("/") if x]
+ if len(parts) != 2: raise ValueError("invalid GitHub repository URL")
+ owner,repo_name=parts
+ if repo_name.endswith(".git"): repo_name=repo_name[:-4]
+ target=ROOT/"projects"/f"{owner}--{repo_name}"
+ target.parent.mkdir(parents=True,exist_ok=True)
+ git_dir=target/".git"
+ if git_dir.is_dir():
+  r=subprocess.run(["git","-C",str(target),"fetch","--depth","1","origin",repo_ref],capture_output=True,text=True,timeout=120,shell=False)
+  if r.returncode != 0: raise ValueError("git fetch failed: "+r.stderr[-4000:])
+  r=subprocess.run(["git","-C",str(target),"checkout","-q","FETCH_HEAD"],capture_output=True,text=True,timeout=60,shell=False)
+  if r.returncode != 0: raise ValueError("git checkout failed: "+r.stderr[-4000:])
+ else:
+  if target.exists():
+   import shutil; shutil.rmtree(target)
+  r=subprocess.run(["git","clone","--depth","1","--branch",repo_ref,repo_url,str(target)],capture_output=True,text=True,timeout=180,shell=False)
+  if r.returncode != 0: raise ValueError("git clone failed: "+r.stderr[-4000:])
+ return target.resolve()
 
 def load_official_flags():
  try:
@@ -102,7 +133,7 @@ def run(args,cwd=None,timeout=120,bg=False):
 def tools():
  base=[
   ("godot-cli","Run any Godot CLI arguments."),
-  ("godot-run-project","Run a Godot project."),
+  ("godot-run-project","Run a Godot project. Optional args: --repo-url <GitHub HTTPS repo> and --repo-ref <branch/tag> sync the repo into the bridge workspace first."),
   ("godot-editor","Launch the editor."),
   ("godot-import","Import project resources."),
   ("godot-check","Validate a project."),
@@ -125,7 +156,24 @@ def tools():
  except Exception: pass
  return out
 def invoke(t,a,cwd=None,timeout=120,bg=False):
- if t=="godot-class-list":
+ if t=="godot-run-project":
+  args=list(a)
+  repo_url=None; repo_ref="main"; clean=[]; i=0
+  while i < len(args):
+   if args[i]=="--repo-url":
+    if i+1>=len(args): raise ValueError("--repo-url requires a value")
+    repo_url=args[i+1]; i+=2
+   elif args[i]=="--repo-ref":
+    if i+1>=len(args): raise ValueError("--repo-ref requires a value")
+    repo_ref=args[i+1]; i+=2
+   else:
+    clean.append(args[i]); i+=1
+  if repo_url:
+   synced=sync_github_repo(repo_url,repo_ref)
+   a=clean
+   cwd=str(synced)
+   if "--path" not in a and "-p" not in a: a=["--path",str(synced)]+a
+ elif t=="godot-class-list":
   return run_godot_script(CLASS_LIST_SCRIPT,a,cwd,timeout)
  if t=="godot-class-info":
   return run_godot_script(CLASS_INFO_SCRIPT,a,cwd,timeout)
