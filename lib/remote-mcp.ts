@@ -1,4 +1,9 @@
-import { Client, StreamableHTTPClientTransport, fromJsonSchema } from "@modelcontextprotocol/client";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+  fromJsonSchema,
+} from "@modelcontextprotocol/client";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 export type RemoteMcpProvider = {
   id: string;
@@ -13,19 +18,27 @@ export type RemoteMcpProvider = {
   capabilities?: string[];
 };
 
-type RemoteEntry = {
+export type RemoteMcpTool = {
   provider: RemoteMcpProvider;
   client: Client;
-  tools: Array<{
-    name: string;
-    description?: string;
-    inputSchema?: Record<string, unknown>;
-  }>;
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
 };
 
 type Registry = {
   version: string;
   providers: RemoteMcpProvider[];
+};
+
+type ConnectedProvider = {
+  provider: RemoteMcpProvider;
+  client: Client;
+  tools: Array<{
+    name: string;
+    description?: string;
+    inputSchema: Record<string, unknown>;
+  }>;
 };
 
 const REGISTRY_URL =
@@ -34,7 +47,7 @@ const REGISTRY_URL =
 let registryCache: { expiresAt: number; registry: Registry } | null = null;
 const remoteCache = new Map<
   string,
-  { expiresAt: number; entry?: RemoteEntry; error?: string }
+  { expiresAt: number; entry?: ConnectedProvider; error?: string }
 >();
 
 async function loadRegistry(): Promise<Registry> {
@@ -67,11 +80,8 @@ async function loadRegistry(): Promise<Registry> {
 function resolveUrl(provider: RemoteMcpProvider): string | null {
   if (provider.urlEnv) {
     const value = process.env[provider.urlEnv]?.trim();
-    if (value) {
-      return value.replace(/\/$/, "");
-    }
+    if (value) return value.replace(/\/$/, "");
   }
-
   return provider.url?.trim().replace(/\/$/, "") || null;
 }
 
@@ -84,7 +94,7 @@ function bearerToken(provider: RemoteMcpProvider): string | undefined {
 async function connectProvider(
   provider: RemoteMcpProvider,
   url: string,
-): Promise<RemoteEntry> {
+): Promise<ConnectedProvider> {
   const token = bearerToken(provider);
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: token
@@ -98,27 +108,76 @@ async function connectProvider(
 
   const client = new Client({
     name: "hyouka-free-game-engine-mcp",
-    version: "1.1.0",
+    version: "1.1.1",
   });
 
   await client.connect(transport);
-
   const listed = await client.listTools();
+
   return {
     provider,
     client,
     tools: (listed.tools ?? []).map((tool) => ({
       name: String(tool.name),
       description:
-        typeof tool.description === "string"
-          ? tool.description
-          : undefined,
+        typeof tool.description === "string" ? tool.description : undefined,
       inputSchema:
         tool.inputSchema && typeof tool.inputSchema === "object"
           ? (tool.inputSchema as Record<string, unknown>)
           : { type: "object", properties: {} },
     })),
   };
+}
+
+async function getConnectedProviders(): Promise<ConnectedProvider[]> {
+  const registry = await loadRegistry();
+  const candidates = registry.providers
+    .filter((provider) => provider.enabled !== false)
+    .map((provider) => ({ provider, url: resolveUrl(provider) }))
+    .filter(
+      (item): item is { provider: RemoteMcpProvider; url: string } =>
+        Boolean(item.url),
+    )
+    .slice(0, 8);
+
+  const entries: ConnectedProvider[] = [];
+
+  for (const { provider, url } of candidates) {
+    const cached = remoteCache.get(provider.id);
+    if (cached?.entry && cached.expiresAt > Date.now()) {
+      entries.push(cached.entry);
+      continue;
+    }
+
+    try {
+      const entry = await connectProvider(provider, url);
+      remoteCache.set(provider.id, {
+        expiresAt: Date.now() + 15_000,
+        entry,
+      });
+      entries.push(entry);
+    } catch (error) {
+      remoteCache.set(provider.id, {
+        expiresAt: Date.now() + 15_000,
+        error: String(error),
+      });
+    }
+  }
+
+  return entries;
+}
+
+export async function discoverRemoteMcpTools(): Promise<RemoteMcpTool[]> {
+  const entries = await getConnectedProviders();
+  return entries.flatMap((entry) =>
+    entry.tools.map((tool) => ({
+      provider: entry.provider,
+      client: entry.client,
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+  );
 }
 
 function uniqueName(base: string, used: Set<string>): string {
@@ -141,10 +200,40 @@ function uniqueName(base: string, used: Set<string>): string {
   return name;
 }
 
+export function registerRemoteMcpTools(
+  server: McpServer,
+  tools: RemoteMcpTool[],
+  used: Set<string>,
+) {
+  for (const tool of tools) {
+    const name = uniqueName(
+      tool.provider.id + "__" + tool.name,
+      used,
+    );
+
+    server.registerTool(
+      name,
+      {
+        title: tool.provider.name + ": " + tool.name,
+        description:
+          tool.description ||
+          ("Proxy tool from remote MCP provider " + tool.provider.id + "."),
+        inputSchema: fromJsonSchema(tool.inputSchema),
+      },
+      async (args) => {
+        return tool.client.callTool({
+          name: tool.name,
+          arguments: args,
+        });
+      },
+    );
+  }
+}
+
 export async function remoteMcpStatus() {
   try {
     const registry = await loadRegistry();
-    const providers = registry.providers.map((provider) => {
+    const statuses = registry.providers.map((provider) => {
       const url = resolveUrl(provider);
       const cached = remoteCache.get(provider.id);
       return {
@@ -162,93 +251,12 @@ export async function remoteMcpStatus() {
       };
     });
 
-    return { version: registry.version, providers };
+    return { version: registry.version, providers: statuses };
   } catch (error) {
     return {
       version: "unknown",
       providers: [],
       error: String(error),
     };
-  }
-}
-
-export async function registerRemoteMcpProviders(
-  server: {
-    registerTool: (
-      name: string,
-      config: {
-        title?: string;
-        description?: string;
-        inputSchema?: unknown;
-      },
-      handler: (args: Record<string, unknown>) => Promise<unknown>,
-    ) => void;
-  },
-  used: Set<string>,
-) {
-  let registry: Registry;
-  try {
-    registry = await loadRegistry();
-  } catch {
-    return;
-  }
-
-  const enabled = registry.providers
-    .filter((provider) => provider.enabled !== false)
-    .map((provider) => ({
-      provider,
-      url: resolveUrl(provider),
-    }))
-    .filter(
-      (item): item is { provider: RemoteMcpProvider; url: string } =>
-        Boolean(item.url),
-    )
-    .slice(0, 8);
-
-  for (const { provider, url } of enabled) {
-    const cached = remoteCache.get(provider.id);
-    let entry = cached?.expiresAt && cached.expiresAt > Date.now()
-      ? cached.entry
-      : undefined;
-
-    if (!entry) {
-      try {
-        entry = await connectProvider(provider, url);
-        remoteCache.set(provider.id, {
-          expiresAt: Date.now() + 15_000,
-          entry,
-        });
-      } catch (error) {
-        remoteCache.set(provider.id, {
-          expiresAt: Date.now() + 15_000,
-          error: String(error),
-        });
-        continue;
-      }
-    }
-
-    for (const tool of entry.tools) {
-      const name = uniqueName(provider.id + "__" + tool.name, used);
-
-      server.registerTool(
-        name,
-        {
-          title: provider.name + ": " + tool.name,
-          description:
-            tool.description ||
-            ("Proxy tool from remote MCP provider " + provider.id + "."),
-          inputSchema: fromJsonSchema(
-            tool.inputSchema ?? { type: "object", properties: {} },
-          ),
-        },
-        async (args) => {
-          const result = await entry!.client.callTool({
-            name: tool.name,
-            arguments: args,
-          });
-          return result;
-        },
-      );
-    }
   }
 }
