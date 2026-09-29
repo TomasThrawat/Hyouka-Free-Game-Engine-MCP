@@ -304,9 +304,34 @@ class NativeHandler(bridge.H):
                     bool(body.get("background")),
                 )
                 return self.send(200, result)
+            if path == "/stop":
+                pid = int(body["pid"])
+                item = bridge.PROCS.get(pid)
+                info = NATIVE_PROCS.get(pid) or load_session(pid=pid)
+                if not item and not info:
+                    raise ValueError("unknown process")
+                if item:
+                    if item[0].poll() is None:
+                        os.killpg(item[0].pid, bridge.signal.SIGTERM)
+                elif pid_alive(pid):
+                    os.killpg(pid, bridge.signal.SIGTERM)
+                info = NATIVE_PROCS.pop(pid, None) or (info if isinstance(info, dict) else None)
+                if info:
+                    cleanup_native(info["project"])
+                    clear_session(info["project"])
+                handle_pair = LOG_HANDLES.pop(pid, None)
+                if handle_pair:
+                    for handle in handle_pair:
+                        try:
+                            handle.flush()
+                            handle.close()
+                        except Exception:
+                            pass
+                bridge.PROCS.pop(pid, None)
+                return self.send(200, {"status":"stopped","pid":pid})
+            return super().do_POST()
         except Exception as exc:
             return self.send(400, {"status":"error","message":str(exc)})
-        return super().do_POST()
 
     def do_GET(self):
         if urlparse(self.path).path == "/selftest":
@@ -337,35 +362,6 @@ class NativeHandler(bridge.H):
                 "smokeTest":smoke,
             })
         return super().do_GET()
-
-    def do_POST(self):
-        if urlparse(self.path).path == "/stop":
-            body = self.body()
-            pid = int(body["pid"])
-            item = bridge.PROCS.get(pid)
-            info = NATIVE_PROCS.get(pid) or load_session(pid=pid)
-            if not item and not info:
-                raise ValueError("unknown process")
-            if item:
-                if item[0].poll() is None:
-                    os.killpg(item[0].pid, bridge.signal.SIGTERM)
-            elif pid_alive(pid):
-                os.killpg(pid, bridge.signal.SIGTERM)
-            info = NATIVE_PROCS.pop(pid, None) or (info if isinstance(info, dict) else None)
-            if info:
-                cleanup_native(info["project"])
-                clear_session(info["project"])
-            handle_pair = LOG_HANDLES.pop(pid, None)
-            if handle_pair:
-                for handle in handle_pair:
-                    try:
-                        handle.flush()
-                        handle.close()
-                    except Exception:
-                        pass
-            bridge.PROCS.pop(pid, None)
-            return self.send(200, {"status":"stopped","pid":pid})
-        return super().do_POST()
 
 bridge.run = native_run
 bridge.invoke = native_invoke
