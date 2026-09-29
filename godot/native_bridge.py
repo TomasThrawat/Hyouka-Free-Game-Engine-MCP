@@ -16,6 +16,40 @@ import public_bridge as bridge
 
 NATIVE_PROCS = {}
 _NATIVE_LAUNCH = False
+
+def session_file(project_dir):
+    return Path(project_dir) / ".godot-mcp-native" / "session.json"
+
+def save_session(project_dir, pid, port):
+    p = session_file(project_dir)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"pid": int(pid), "port": int(port), "project": str(project_dir)}), encoding="utf-8")
+
+def load_session(pid=None, project_dir=None):
+    candidates = []
+    if project_dir:
+        candidates.append(session_file(project_dir))
+    root = Path(bridge.ROOT) / "projects" if "bridge" in globals() else None
+    if root and root.is_dir():
+        candidates.extend(root.glob("*/.godot-mcp-native/session.json"))
+    for path in candidates:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if pid is not None and int(data.get("pid", -1)) != int(pid):
+                continue
+            project = Path(str(data["project"]))
+            if not project.is_dir():
+                continue
+            return data
+        except Exception:
+            continue
+    return None
+
+def clear_session(project_dir):
+    try:
+        session_file(project_dir).unlink(missing_ok=True)
+    except Exception:
+        pass
 ORIGINAL_RUN = bridge.run
 ORIGINAL_INVOKE = bridge.invoke
 ORIGINAL_TOOLS = bridge.tools
@@ -98,6 +132,7 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     )
     bridge.PROCS[p.pid] = (p, __import__("time").time(), cmd, str(wd))
     NATIVE_PROCS[p.pid] = {"port": port, "project": str(wd)}
+    save_session(wd, p.pid, port)
     return {"status":"started","pid":p.pid,"command":cmd,"cwd":str(wd),"nativeGodotControl":True,"port":port}
 
 def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
@@ -115,7 +150,15 @@ def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
     pid = int(args[0])
     proc = bridge.PROCS.get(pid)
     info = NATIVE_PROCS.get(pid)
-    if not proc or not info:
+    session = None
+    if not info:
+        session = load_session(pid=pid)
+        if session:
+            info = {"port": int(session["port"]), "project": str(session["project"])}
+            NATIVE_PROCS[pid] = info
+    if not proc:
+        raise ValueError("PID is not a running Godot project with native control")
+    if not info:
         raise ValueError("PID is not a running Godot project with native control")
     if proc[0].poll() is not None:
         return {
@@ -206,6 +249,7 @@ class NativeHandler(bridge.H):
             info = NATIVE_PROCS.pop(pid, None)
             if info:
                 cleanup_native(info["project"])
+                clear_session(info["project"])
             bridge.PROCS.pop(pid, None)
             return self.send(200, {"status":"stopped","pid":pid})
         return super().do_POST()
