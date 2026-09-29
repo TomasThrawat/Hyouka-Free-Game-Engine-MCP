@@ -52,7 +52,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl unzip python3 jq
+          sudo apt-get install -y curl unzip python3 jq xvfb
 
       - name: Install Godot 4.7.2 .NET
         run: |
@@ -84,7 +84,14 @@ jobs:
       - name: Start Godot bridge
         run: |
           set -e
-          nohup env             GODOT_BIN="$GODOT_BIN"             GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE"             GODOT_BRIDGE_HOST="127.0.0.1"             python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
+          nohup Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
+          export DISPLAY=:99
+          for i in $(seq 1 15); do
+            if test -S /tmp/.X11-unix/X99; then break; fi
+            sleep 1
+          done
+          test -S /tmp/.X11-unix/X99
+          nohup env             DISPLAY="$DISPLAY"             GODOT_BIN="$GODOT_BIN"             GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE"             GODOT_BRIDGE_HOST="127.0.0.1"             python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
           READY=0
           for i in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:9765/health >/dev/null 2>&1; then
@@ -208,7 +215,8 @@ jobs:
                   file.store_string("clicked")
                   file.close()
           EOF
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--headless","--path",$path,"--audio-driver","Dummy","--disable-vsync"],background:true,timeoutSeconds:30}')
+          export DISPLAY=:99
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy","--disable-vsync"],background:true,timeoutSeconds:30}')
           START=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           PID=$(jq -r '.pid' <<<"$START")
