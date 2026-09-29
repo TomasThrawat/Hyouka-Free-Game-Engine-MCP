@@ -1,5 +1,9 @@
 name: Godot Live MCP
 
+concurrency:
+  group: godot-live-mcp
+  cancel-in-progress: true
+
 on:
   push:
     branches: ["main"]
@@ -179,7 +183,7 @@ jobs:
         run: |
           set -e
           if [ "$RUN_EVENT" = "push" ]; then
-            HANDOFF_MINUTES=5
+            HANDOFF_MINUTES=240
             NEXT_MINUTES=300
           else
             case "$INPUT_MINUTES" in
