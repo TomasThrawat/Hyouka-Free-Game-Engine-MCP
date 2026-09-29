@@ -31,9 +31,15 @@ def load_session(pid=None, project_dir=None):
     candidates = []
     if project_dir:
         candidates.append(session_file(project_dir))
-    root = Path(bridge.ROOT) / "projects" if "bridge" in globals() else None
-    if root and root.is_dir():
-        candidates.extend(root.glob("*/.godot-mcp-native/session.json"))
+    workspace = Path(bridge.ROOT) if "bridge" in globals() else None
+    if workspace and workspace.is_dir():
+        root_session = workspace / ".godot-mcp-native" / "session.json"
+        if root_session.is_file():
+            candidates.append(root_session)
+        projects = workspace / "projects"
+        if projects.is_dir():
+            candidates.extend(projects.glob("*/.godot-mcp-native/session.json"))
+        candidates.extend(workspace.glob("*/.godot-mcp-native/session.json"))
     for path in candidates:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
