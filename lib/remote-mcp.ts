@@ -305,6 +305,8 @@ export async function remoteMcpStatus() {
 
 export async function gameCapabilityAudit() {
   try {
+    await getConnectedProviders();
+
     const [matrix, remote] = await Promise.all([
       loadCapabilityMatrix(),
       remoteMcpStatus(),
