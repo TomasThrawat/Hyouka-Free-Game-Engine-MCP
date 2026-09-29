@@ -190,10 +190,11 @@ function uniqueName(base: string, used: Set<string>): string {
 
   while (used.has(name)) {
     const tail = "_" + suffix++;
-    name = (normalized || "mcp_remote_tool").slice(
-      0,
-      128 - tail.length,
-    ) + tail;
+    name =
+      (normalized || "mcp_remote_tool").slice(
+        0,
+        128 - tail.length,
+      ) + tail;
   }
 
   used.add(name);
@@ -206,10 +207,7 @@ export function registerRemoteMcpTools(
   used: Set<string>,
 ) {
   for (const tool of tools) {
-    const name = uniqueName(
-      tool.provider.id + "__" + tool.name,
-      used,
-    );
+    const name = uniqueName(tool.provider.id + "__" + tool.name, used);
 
     server.registerTool(
       name,
@@ -220,12 +218,11 @@ export function registerRemoteMcpTools(
           ("Proxy tool from remote MCP provider " + tool.provider.id + "."),
         inputSchema: fromJsonSchema(tool.inputSchema),
       },
-      async (args) => {
-        return tool.client.callTool({
+      async (args) =>
+        tool.client.callTool({
           name: tool.name,
-          arguments: args,
-        });
-      },
+          arguments: args as Record<string, unknown>,
+        }),
     );
   }
 }
