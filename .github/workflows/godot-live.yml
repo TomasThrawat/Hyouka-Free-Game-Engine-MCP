@@ -218,7 +218,8 @@ jobs:
           echo "$STATUS" | jq '{status,pid,viewportWidth,viewportHeight}'
           test "$(jq -r '.status' <<<"$STATUS")" = "ok"
           VIEW=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
-          echo "$VIEW" | jq '{status,pid,width,height,contentType:(.content[0].mimeType // null),hasImage:((.content[0].data // "") | length > 0)}'
+          echo "$VIEW"
+          echo "$VIEW" | jq '{status,pid,width,height,httpStatus,message,contentType:(.content[0].mimeType // null),hasImage:((.content[0].data // "") | length > 0)}'
           test "$(jq -r '.status' <<<"$VIEW")" = "ok"
           test "$(jq -r '.content[0].mimeType' <<<"$VIEW")" = "image/png"
           jq -r '.content[0].data' <<<"$VIEW" | base64 -d > /tmp/godot-native-e2e.png
