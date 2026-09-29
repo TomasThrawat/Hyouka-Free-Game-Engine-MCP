@@ -170,6 +170,9 @@ def invoke(t,a,cwd=None,timeout=120,bg=False):
     clean.append(args[i]); i+=1
   if repo_url:
    synced=sync_github_repo(repo_url,repo_ref)
+   imported=run(["--headless","--editor","--import","--quit"],cwd=str(synced),timeout=180,bg=False)
+   if imported["status"] != "ok":
+    raise ValueError("Godot import failed: "+str(imported.get("stderr",""))[-4000:])
    a=clean
    cwd=str(synced)
    if "--path" not in a and "-p" not in a: a=["--path",str(synced)]+a
