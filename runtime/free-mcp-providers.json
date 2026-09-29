@@ -1,5 +1,5 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -52,11 +52,12 @@
     {
       "id": "krita",
       "name": "Krita MCP",
-      "description": "Krita painting and raster-art automation over an MCP server connected to the running Krita plugin.",
+      "description": "Krita painting and raster-art automation over a Streamable HTTP MCP wrapper connected to a running Krita plugin.",
       "urlEnv": "HYOUKA_KRITA_MCP_URL",
+      "urlSuffix": "/mcp",
       "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
       "enabled": true,
-      "source": "https://github.com/edithatogo/krita-cli",
+      "source": "https://github.com/nanayax3/krita-mcp",
       "capabilities": [
         "canvas",
         "layers",
