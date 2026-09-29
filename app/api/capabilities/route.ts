@@ -1,4 +1,4 @@
-import { gameCapabilityAudit } from "../../../../lib/remote-mcp";
+import { gameCapabilityAudit } from "../../../lib/remote-mcp";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
