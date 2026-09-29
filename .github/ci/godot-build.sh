@@ -35,9 +35,13 @@ PY
 
 echo "== Python bridge =="
 python3 -m py_compile godot/public_bridge.py
+echo "Python bridge syntax validation passed."
 
 echo "== Godot smoke project =="
 test -f runtime/godot-smoke-test/project.godot
+test -f runtime/godot-smoke-test/main.tscn
+test -f runtime/godot-smoke-test/smoke.gd
+echo "Godot smoke project files validated."
 
 echo "== Install download tools =="
 sudo apt-get update
@@ -66,6 +70,11 @@ test -n "$GODOT_BIN"
 chmod +x "$GODOT_BIN"
 "$GODOT_BIN" --version
 "$GODOT_BIN" --headless --path runtime/godot-smoke-test --editor --quit
+echo "Godot editor/headless initialization passed."
+
+echo "== Run Godot runtime smoke test =="
+"$GODOT_BIN" --headless --path runtime/godot-smoke-test
+echo "Godot runtime smoke test completed successfully."
 
 echo "== Verify engine boundary =="
 if grep -RniE 'O3DE|o3de|[Bb]lender/' app godot 2>/dev/null; then
