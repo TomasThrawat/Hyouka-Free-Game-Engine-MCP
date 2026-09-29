@@ -135,7 +135,7 @@ def install_native(project_dir, port):
     return port
 
 def native_run(args, cwd=None, timeout=120, bg=False):
-    if not (bg and _NATIVE_LAUNCH):
+    if not bg:
         return ORIGINAL_RUN(args, cwd, timeout, bg)
     wd = bridge.inside(cwd)
     if not (wd / "project.godot").is_file():
