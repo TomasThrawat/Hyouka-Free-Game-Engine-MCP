@@ -54,7 +54,9 @@ def install_native(project_dir, port):
     native_dir.mkdir(parents=True, exist_ok=True)
     original = project_file.read_text(encoding="utf-8")
     (native_dir / "project.godot.original").write_text(original, encoding="utf-8")
-    (native_dir / "game_view.gd").write_text(helper_source.read_text(encoding="utf-8"), encoding="utf-8")
+    helper_text = helper_source.read_text(encoding="utf-8")
+    helper_text = helper_text.replace("var listening_port := 0", "var listening_port := " + str(int(port)))
+    (native_dir / "game_view.gd").write_text(helper_text, encoding="utf-8")
     line = 'GodotMcpNativeGameView="*res://.godot-mcp-native/game_view.gd"'
     start = original.find("[autoload]")
     if start < 0:
@@ -83,7 +85,6 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     normalized = bridge.normalize(args)
     cmd = [str(bridge.GODOT)] + normalized
     env = os.environ.copy()
-    env["GODOT_MCP_VIEW_PORT"] = str(port)
     p = subprocess.Popen(
         cmd,
         cwd=wd,

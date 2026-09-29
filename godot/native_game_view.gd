@@ -4,16 +4,18 @@ var server := TCPServer.new()
 var clients: Array[StreamPeerTCP] = []
 var pending_view_client: StreamPeerTCP = null
 var listening_port := 0
+var native_ready := false
 
 func _ready() -> void:
-    listening_port = int(OS.get_environment("GODOT_MCP_VIEW_PORT"))
     if listening_port <= 0:
+        push_error("Godot MCP native view server has no configured port")
         return
     var err := server.listen(listening_port, "127.0.0.1")
     if err != OK:
         push_error("Godot MCP native view server failed: " + str(err))
         return
-    print("GODOT_MCP_NATIVE_VIEW_PORT=" + str(listening_port))
+    native_ready = true
+    print("GODOT_MCP_NATIVE_VIEW_READY port=" + str(listening_port))
 
 func _process(_delta: float) -> void:
     while server.is_connection_available():
