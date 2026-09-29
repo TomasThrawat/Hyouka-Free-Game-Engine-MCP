@@ -7,6 +7,8 @@ on:
       - ".github/workflows/godot-live.yml"
       - "godot/public_bridge.py"
       - "runtime/godot-official-cli.json"
+      - "godot/native_bridge.py"
+      - "godot/native_game_view.gd"
   workflow_dispatch:
     inputs:
       duration_minutes:
@@ -71,14 +73,14 @@ jobs:
       - name: Validate bridge before publish
         run: |
           set -e
-          python3 -m py_compile godot/public_bridge.py
+          python3 -m py_compile godot/public_bridge.py godot/native_bridge.py
           test -f runtime/godot-smoke-test/project.godot
           ! grep -RniE 'O3DE|o3de|Blender|blender/' app godot runtime .devcontainer README.md 2>/dev/null
 
       - name: Start Godot bridge
         run: |
           set -e
-          nohup env             GODOT_BIN="$GODOT_BIN"             GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE"             GODOT_BRIDGE_HOST="127.0.0.1"             python3 godot/public_bridge.py >/tmp/godot-bridge.log 2>&1 &
+          nohup env             GODOT_BIN="$GODOT_BIN"             GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE"             GODOT_BRIDGE_HOST="127.0.0.1"             python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
           READY=0
           for i in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:9765/health >/dev/null 2>&1; then
@@ -164,7 +166,9 @@ jobs:
           set -e
           curl -fsS "$URL/health"
           curl -fsS "$URL/discover" | jq '.status, .engine, (.tools | length)'
-          curl -fsS "$URL/selftest" | jq '.status, .smokeTest.status'
+          curl -fsS "$URL/selftest" | jq '.status, .nativeControlCheck.status, .smokeTest.status'
+          curl -fsS "$URL/find?q=godot-game-view" | jq '.tools[0].id, .tools[0].kind'
+          curl -fsS "$URL/find?q=godot-game-input" | jq '.tools[0].id, .tools[0].kind'
 
       - name: Hand off to successor runner
         env:
