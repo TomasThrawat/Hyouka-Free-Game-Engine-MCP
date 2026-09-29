@@ -15,6 +15,7 @@ sys.path.insert(0, str(HERE))
 import public_bridge as bridge
 
 NATIVE_PROCS = {}
+LOG_HANDLES = {}
 _NATIVE_LAUNCH = False
 
 def session_file(project_dir):
@@ -23,7 +24,7 @@ def session_file(project_dir):
 def save_session(project_dir, pid, port):
     p = session_file(project_dir)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"pid": int(pid), "port": int(port), "project": str(project_dir)}), encoding="utf-8")
+    p.write_text(json.dumps({"pid": int(pid), "port": int(port), "project": str(project_dir), "stdoutLog": str(Path(project_dir)/".godot-mcp-native"/"stdout.log"), "stderrLog": str(Path(project_dir)/".godot-mcp-native"/"stderr.log")}), encoding="utf-8")
 
 def load_session(pid=None, project_dir=None):
     candidates = []
@@ -119,17 +120,24 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     normalized = bridge.normalize(args)
     cmd = [str(bridge.GODOT)] + normalized
     env = os.environ.copy()
+    native_dir = wd / ".godot-mcp-native"
+    native_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = native_dir / "stdout.log"
+    stderr_path = native_dir / "stderr.log"
+    stdout_handle = open(stdout_path, "a", encoding="utf-8")
+    stderr_handle = open(stderr_path, "a", encoding="utf-8")
     p = subprocess.Popen(
         cmd,
         cwd=wd,
         env=env,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=stdout_handle,
+        stderr=stderr_handle,
         text=True,
         shell=False,
         start_new_session=True,
     )
+    LOG_HANDLES[p.pid] = (stdout_handle, stderr_handle)
     bridge.PROCS[p.pid] = (p, __import__("time").time(), cmd, str(wd))
     NATIVE_PROCS[p.pid] = {"port": port, "project": str(wd)}
     save_session(wd, p.pid, port)
@@ -156,18 +164,21 @@ def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
         if session:
             info = {"port": int(session["port"]), "project": str(session["project"])}
             NATIVE_PROCS[pid] = info
-    if not proc:
-        raise ValueError("PID is not a running Godot project with native control")
     if not info:
         raise ValueError("PID is not a running Godot project with native control")
-    if proc[0].poll() is not None:
+    alive = proc is not None and proc[0].poll() is None
+    if proc is None:
+        alive = pid_alive(pid)
+    if not alive:
+        session_data = load_session(pid=pid) or {"pid":pid}
+        stdout, stderr = read_logs(session_data)
         return {
             "status":"stopped",
             "engine":"Godot",
             "pid":pid,
-            "returnCode":proc[0].returncode,
-            "stdout":proc[0].stdout.read() if proc[0].stdout else "",
-            "stderr":proc[0].stderr.read() if proc[0].stderr else "",
+            "returnCode":proc[0].returncode if proc is not None else None,
+            "stdout":stdout,
+            "stderr":stderr,
             "message":"Godot game process is no longer running"
         }
     base = "http://127.0.0.1:" + str(info["port"])
@@ -242,14 +253,26 @@ class NativeHandler(bridge.H):
             body = self.body()
             pid = int(body["pid"])
             item = bridge.PROCS.get(pid)
-            if not item:
+            info = NATIVE_PROCS.get(pid) or load_session(pid=pid)
+            if not item and not info:
                 raise ValueError("unknown process")
-            if item[0].poll() is None:
-                os.killpg(item[0].pid, bridge.signal.SIGTERM)
-            info = NATIVE_PROCS.pop(pid, None)
+            if item:
+                if item[0].poll() is None:
+                    os.killpg(item[0].pid, bridge.signal.SIGTERM)
+            elif pid_alive(pid):
+                os.killpg(pid, bridge.signal.SIGTERM)
+            info = NATIVE_PROCS.pop(pid, None) or (info if isinstance(info, dict) else None)
             if info:
                 cleanup_native(info["project"])
                 clear_session(info["project"])
+            handle_pair = LOG_HANDLES.pop(pid, None)
+            if handle_pair:
+                for handle in handle_pair:
+                    try:
+                        handle.flush()
+                        handle.close()
+                    except Exception:
+                        pass
             bridge.PROCS.pop(pid, None)
             return self.send(200, {"status":"stopped","pid":pid})
         return super().do_POST()
