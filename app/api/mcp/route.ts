@@ -5,6 +5,7 @@ import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
 import {
   discoverRemoteMcpTools,
+  gameCapabilityAudit,
   registerRemoteMcpTools,
   remoteMcpStatus,
 } from "../../../lib/remote-mcp";
@@ -208,6 +209,17 @@ async function createHandler() {
         inputSchema: z.object({}),
       },
       async () => out(await remoteMcpStatus()),
+    );
+
+    server.registerTool(
+      "game_capability_audit",
+      {
+        title: "Full game capability audit",
+        description:
+          "Return the free-game production capability matrix plus live remote provider configuration, connection state, and discovered tool counts.",
+        inputSchema: z.object({}),
+      },
+      async () => out(await gameCapabilityAudit()),
     );
 
     for (const tool of inventory) {
