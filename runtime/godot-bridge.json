@@ -1,9 +1,9 @@
 {
   "status": "ok",
   "engine": "Godot",
-  "url": "https://educated-sci-str-lifetime.trycloudflare.com",
+  "url": "https://separate-lifetime-upc-return.trycloudflare.com",
   "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
   "source": "https://github.com/godotengine/godot",
-  "durationMinutes": "10",
-  "ownerRunId": "36525636489"
+  "durationMinutes": "300",
+  "ownerRunId": "36525696405"
 }
