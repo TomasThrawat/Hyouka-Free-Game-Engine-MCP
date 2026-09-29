@@ -172,6 +172,7 @@ def native_start_project(args, cwd=None, timeout=120):
     args = list(args)
     repo_url = None
     repo_ref = "main"
+    explicit_path = None
     clean = []
     index = 0
     while index < len(args):
@@ -185,6 +186,12 @@ def native_start_project(args, cwd=None, timeout=120):
             if index + 1 >= len(args):
                 raise ValueError("--repo-ref requires a value")
             repo_ref = args[index + 1]
+            index += 2
+        elif value in {"--path", "-p"}:
+            if index + 1 >= len(args):
+                raise ValueError("--path requires a value")
+            explicit_path = args[index + 1]
+            clean.extend([value, explicit_path])
             index += 2
         else:
             clean.append(value)
@@ -202,7 +209,7 @@ def native_start_project(args, cwd=None, timeout=120):
             raise ValueError("Godot import failed: " + str(imported.get("stderr", ""))[-4000:])
         cwd = str(project_dir)
     else:
-        project_dir = bridge.inside(cwd)
+        project_dir = bridge.inside(explicit_path if explicit_path else cwd)
         cwd = str(project_dir)
 
     if "--path" not in clean and "-p" not in clean:
