@@ -1,0 +1,93 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "id": "assetmcp-vercel",
+      "name": "ASSETMCP",
+      "description": "Remote free asset MCP for Kenney, Poly Haven, ambientCG, OpenGameArt, Openverse, itch.io, Godot Asset Library and related asset sources.",
+      "url": "https://assetmcp-vercel-http-nev99e96p-hyouka1.vercel.app/api/mcp",
+      "urlEnv": "HYOUKA_ASSETMCP_URL",
+      "enabled": true,
+      "source": "https://github.com/TomasThrawat/ASSETMCP-Vercel-HTTP",
+      "license": "MIT",
+      "capabilities": [
+        "kenney",
+        "polyhaven",
+        "ambientcg",
+        "opengameart",
+        "openverse",
+        "itch",
+        "godot-asset-library",
+        "license-audit",
+        "asset-download"
+      ]
+    },
+    {
+      "id": "blender-dcc",
+      "name": "DCC-MCP Blender",
+      "description": "Typed Blender automation over Streamable HTTP when a Blender instance is running.",
+      "urlEnv": "HYOUKA_BLENDER_MCP_URL",
+      "enabled": true,
+      "source": "https://github.com/dcc-mcp/dcc-mcp-blender",
+      "license": "MIT",
+      "capabilities": [
+        "modeling",
+        "materials",
+        "scene-editing",
+        "rendering",
+        "headless-pipeline"
+      ]
+    },
+    {
+      "id": "krita",
+      "name": "Krita MCP",
+      "description": "Krita automation provider. Configure a reachable MCP endpoint before enabling remote calls.",
+      "urlEnv": "HYOUKA_KRITA_MCP_URL",
+      "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
+      "enabled": true,
+      "source": "https://github.com/nanayax3/krita-mcp",
+      "capabilities": [
+        "canvas",
+        "layers",
+        "painting",
+        "filters",
+        "export"
+      ]
+    },
+    {
+      "id": "godot-full-control",
+      "name": "Godot Full Control MCP",
+      "description": "Alternative high-coverage Godot MCP implementation. Use only when its endpoint is explicitly exposed as remote HTTP.",
+      "urlEnv": "HYOUKA_GODOT_FULL_MCP_URL",
+      "enabled": true,
+      "source": "https://github.com/tugcantopaloglu/godot-mcp",
+      "license": "MIT",
+      "capabilities": [
+        "scene-manipulation",
+        "scripting",
+        "rendering",
+        "ui",
+        "audio",
+        "animation",
+        "physics",
+        "project-management"
+      ]
+    },
+    {
+      "id": "godot-rust-mcp",
+      "name": "Godot Rust MCP",
+      "description": "Rust Godot MCP alternative with editor bridge and viewport capture. Its upstream transport is currently local, so no URL is configured by default.",
+      "urlEnv": "HYOUKA_GODOT_RUST_MCP_URL",
+      "enabled": true,
+      "source": "https://github.com/teratron/godot-mcp",
+      "license": "MIT",
+      "capabilities": [
+        "editor-bridge",
+        "scene-tree",
+        "node-control",
+        "viewport-capture",
+        "headless-cli"
+      ]
+    }
+  ]
+}
