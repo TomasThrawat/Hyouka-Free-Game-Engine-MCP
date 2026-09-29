@@ -217,15 +217,15 @@ jobs:
           EOF
           export DISPLAY=:99
           RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy","--disable-vsync"],background:true,timeoutSeconds:30}')
-          START=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
+          START=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           PID=$(jq -r '.pid' <<<"$START")
           test "$PID" != "null"
           sleep 2
-          STATUS=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
+          STATUS=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
           echo "$STATUS" | jq '{status,pid,viewportWidth,viewportHeight}'
           test "$(jq -r '.status' <<<"$STATUS")" = "ok"
-          VIEW=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
+          VIEW=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
           echo "$VIEW"
           echo "$VIEW" | jq '{status,pid,width,height,httpStatus,message,contentType:(.content[0].mimeType // null),hasImage:((.content[0].data // "") | length > 0)}'
           test "$(jq -r '.status' <<<"$VIEW")" = "ok"
@@ -239,7 +239,7 @@ jobs:
           print("PNG bytes:", len(b))
           PY
           INPUT_JSON=$(jq -nc --arg pid "$PID" '{toolId:"godot-game-input",args:[$pid,"{\"type\":\"click\",\"x\":160,\"y\":100}"]}')
-          INPUT=$(curl -fsS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$INPUT_JSON")
+          INPUT=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$INPUT_JSON")
           echo "$INPUT"
           test "$(jq -r '.status' <<<"$INPUT")" = "ok"
           sleep 1
