@@ -2,7 +2,6 @@ extends Node
 
 var server := TCPServer.new()
 var clients: Array[StreamPeerTCP] = []
-var pending_view_client: StreamPeerTCP = null
 var listening_port := 0
 var native_ready := false
 
@@ -71,17 +70,12 @@ func _parse_query(text: String) -> Dictionary:
     return result
 
 func _queue_view(client: StreamPeerTCP) -> void:
-    if pending_view_client != null:
-        _send_json(client, 429, {"status":"error","message":"view capture already pending"})
-        return
-    pending_view_client = client
-    call_deferred("_finish_view")
+    call_deferred("_finish_view", client)
 
-func _finish_view() -> void:
-    await RenderingServer.frame_post_draw
-    var client := pending_view_client
-    pending_view_client = null
-    if client == null:
+func _finish_view(client: StreamPeerTCP) -> void:
+    await get_tree().process_frame
+    await get_tree().process_frame
+    if client == null or client.get_status() != StreamPeerSocket.STATUS_CONNECTED:
         return
     var texture := get_viewport().get_texture()
     if texture == null:
