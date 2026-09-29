@@ -221,9 +221,15 @@ jobs:
           echo "$START"
           PID=$(jq -r '.pid' <<<"$START")
           test "$PID" != "null"
-          sleep 2
-          STATUS=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
-          echo "$STATUS" | jq '{status,pid,viewportWidth,viewportHeight}'
+          STATUS=""
+          for attempt in $(seq 1 10); do
+            STATUS=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
+            if test "$(jq -r '.status' <<<"$STATUS")" = "ok"; then
+              break
+            fi
+            sleep 1
+          done
+          echo "$STATUS" | jq '{status,pid,viewportWidth,viewportHeight,message,stdoutTail,stderrTail}'
           test "$(jq -r '.status' <<<"$STATUS")" = "ok"
           VIEW=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
           echo "$VIEW"
