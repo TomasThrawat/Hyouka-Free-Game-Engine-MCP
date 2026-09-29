@@ -254,6 +254,23 @@ def native_tools():
     return items
 
 class NativeHandler(bridge.H):
+    def do_POST(self):
+        try:
+            path = urlparse(self.path).path
+            body = self.body()
+            if path == "/invoke":
+                result = native_invoke(
+                    str(body["toolId"]),
+                    body.get("args", []),
+                    body.get("cwd"),
+                    body.get("timeoutSeconds", 120),
+                    bool(body.get("background")),
+                )
+                return self.send(200, result)
+        except Exception as exc:
+            return self.send(400, {"status":"error","message":str(exc)})
+        return super().do_POST()
+
     def do_GET(self):
         if urlparse(self.path).path == "/selftest":
             check = bridge.ROOT / ".godot-mcp-native-check"
