@@ -3,6 +3,7 @@ export const revalidate = 0;
 
 import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
+import { registerRemoteMcpProviders, remoteMcpStatus } from "../../../../lib/remote-mcp";
 
 const CONFIG =
   "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/godot-bridge.json";
@@ -80,12 +81,12 @@ async function discoverTools(): Promise<BridgeTool[]> {
     result &&
     typeof result === "object" &&
     Array.isArray((result as { tools?: unknown }).tools)
-      ? ((result as { tools: unknown[] }).tools.filter(
+      ? (result as { tools: unknown[] }).tools.filter(
           (tool): tool is BridgeTool =>
             !!tool &&
             typeof tool === "object" &&
             typeof (tool as { id?: unknown }).id === "string",
-        ))
+        )
       : [];
 
   toolCache = { expiresAt: now + 15_000, tools };
@@ -190,6 +191,17 @@ async function createHandler() {
       async () => out(await call("/health")),
     );
 
+    server.registerTool(
+      "mcp_remote_providers",
+      {
+        title: "Remote MCP provider status",
+        description:
+          "Show configured remote MCP providers, their source projects, connection state, and discovered tool counts.",
+        inputSchema: z.object({}),
+      },
+      async () => out(await remoteMcpStatus()),
+    );
+
     for (const tool of inventory) {
       const name = toolName(tool.id, used);
       const description =
@@ -209,6 +221,8 @@ async function createHandler() {
           out(await call("/invoke", { ...args, toolId: tool.id })),
       );
     }
+
+    void registerRemoteMcpProviders(server, used);
   });
 }
 
