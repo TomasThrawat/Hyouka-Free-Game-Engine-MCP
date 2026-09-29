@@ -258,12 +258,18 @@ def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
         }
     base = "http://127.0.0.1:" + str(info["port"])
     if tool_id == "godot-game-status":
-        with urlopen(Request(base + "/state"), timeout=5) as response:
-            result = json.loads(response.read())
-        session_data = load_session(pid=pid) or {}
-        stdout, stderr = read_logs(session_data)
-        result.update({"pid": pid, "stdoutTail": stdout[-6000:], "stderrTail": stderr[-6000:]})
-        return result
+        try:
+            with urlopen(Request(base + "/state"), timeout=5) as response:
+                result = json.loads(response.read())
+            session_data = load_session(pid=pid) or {}
+            stdout, stderr = read_logs(session_data)
+            result.update({"pid": pid, "stdoutTail": stdout[-6000:], "stderrTail": stderr[-6000:]})
+            return result
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")
+            return {"status":"error","engine":"Godot","pid":pid,"httpStatus":exc.code,"message":body}
+        except URLError as exc:
+            return {"status":"error","engine":"Godot","pid":pid,"message":"native state channel unavailable: "+str(exc)}
     if tool_id == "godot-game-view":
         try:
             with urlopen(Request(base + "/view"), timeout=30) as response:
@@ -291,8 +297,14 @@ def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
     if not isinstance(event, dict):
         raise ValueError("input event must be a JSON object")
     query = urlencode({str(k): str(v).lower() if isinstance(v, bool) else str(v) for k,v in event.items()})
-    with urlopen(Request(base + "/input?" + query), timeout=5) as response:
-        return json.loads(response.read())
+    try:
+        with urlopen(Request(base + "/input?" + query), timeout=5) as response:
+            return json.loads(response.read())
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        return {"status":"error","engine":"Godot","pid":pid,"httpStatus":exc.code,"message":body}
+    except URLError as exc:
+        return {"status":"error","engine":"Godot","pid":pid,"message":"native input channel unavailable: "+str(exc)}
 
 def native_tools():
     items = list(ORIGINAL_TOOLS())
@@ -344,7 +356,7 @@ class NativeHandler(bridge.H):
                 return self.send(200, {"status":"stopped","pid":pid})
             return super().do_POST()
         except Exception as exc:
-            return self.send(400, {"status":"error","message":str(exc)})
+            return self.send(200, {"status":"error","engine":"Godot","message":str(exc)})
 
     def do_GET(self):
         if urlparse(self.path).path == "/selftest":
