@@ -139,21 +139,6 @@
         "variation-generation",
         "local-audio"
       ]
-    },
-    {
-      "id": "free-image-local",
-      "name": "Free Image MCP",
-      "description": "Optional free image generation provider for concept art, sprites, icons, tiles and backgrounds.",
-      "urlEnv": "HYOUKA_FREE_IMAGE_MCP_URL",
-      "enabled": true,
-      "source": "https://github.com/TomasThrawat",
-      "capabilities": [
-        "concept-art",
-        "sprites",
-        "icons",
-        "tiles",
-        "backgrounds"
-      ]
     }
   ]
 }
