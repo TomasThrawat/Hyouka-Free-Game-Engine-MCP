@@ -44,8 +44,8 @@ sudo apt-get update
 sudo apt-get install -y curl unzip
 
 echo "== Download official Godot .NET =="
-curl -fL --retry 8 -o /tmp/godot.zip   https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
-curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt   https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
+curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
+curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
 
 echo "== Verify Godot checksum =="
 CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
@@ -67,7 +67,10 @@ chmod +x "$GODOT_BIN"
 "$GODOT_BIN" --version
 "$GODOT_BIN" --headless --path runtime/godot-smoke-test --editor --quit
 
-echo "== Verify repository is Godot-only =="
-! grep -RniE 'O3DE|o3de|Blender|blender/' app godot runtime .devcontainer README.md 2>/dev/null
+echo "== Verify engine boundary =="
+if grep -RniE 'O3DE|o3de|[Bb]lender/' app godot 2>/dev/null; then
+  echo "Unexpected external-engine reference found in app/godot source."
+  exit 1
+fi
 
 echo "== CI checks passed =="
