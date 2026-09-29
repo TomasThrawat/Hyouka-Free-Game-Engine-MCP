@@ -3,7 +3,11 @@ export const revalidate = 0;
 
 import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
-import { registerRemoteMcpProviders, remoteMcpStatus } from "../../../lib/remote-mcp";
+import {
+  discoverRemoteMcpTools,
+  registerRemoteMcpTools,
+  remoteMcpStatus,
+} from "../../../lib/remote-mcp";
 
 const CONFIG =
   "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/godot-bridge.json";
@@ -142,7 +146,8 @@ function toolName(id: string, used: Set<string>) {
 
   while (used.has(name)) {
     const tail = "_" + suffix++;
-    name = (baseName || "godot_tool").slice(0, 128 - tail.length) + tail;
+    name =
+      (baseName || "godot_tool").slice(0, 128 - tail.length) + tail;
   }
 
   used.add(name);
@@ -150,7 +155,10 @@ function toolName(id: string, used: Set<string>) {
 }
 
 async function createHandler() {
-  const inventory = await discoverTools();
+  const [inventory, remoteTools] = await Promise.all([
+    discoverTools(),
+    discoverRemoteMcpTools(),
+  ]);
 
   return createMcpHandler((server) => {
     const used = new Set<string>();
@@ -222,7 +230,7 @@ async function createHandler() {
       );
     }
 
-    void registerRemoteMcpProviders(server, used);
+    registerRemoteMcpTools(server, remoteTools, used);
   });
 }
 
