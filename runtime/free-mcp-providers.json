@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -32,32 +32,43 @@
       "license": "MIT",
       "capabilities": [
         "modeling",
+        "mesh-editing",
+        "uv",
+        "rigging",
+        "animation",
         "materials",
+        "shader-nodes",
+        "texture-pipeline",
         "scene-editing",
+        "physics",
         "rendering",
-        "headless-pipeline"
+        "compositing",
+        "validation",
+        "glb-export"
       ]
     },
     {
       "id": "krita",
       "name": "Krita MCP",
-      "description": "Krita automation provider. Configure a reachable MCP endpoint before enabling remote calls.",
+      "description": "Krita painting and raster-art automation over an MCP server connected to the running Krita plugin.",
       "urlEnv": "HYOUKA_KRITA_MCP_URL",
       "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
       "enabled": true,
-      "source": "https://github.com/nanayax3/krita-mcp",
+      "source": "https://github.com/edithatogo/krita-cli",
       "capabilities": [
         "canvas",
         "layers",
         "painting",
+        "shapes",
         "filters",
-        "export"
+        "export",
+        "texture-source-art"
       ]
     },
     {
-      "id": "godot-full-control",
-      "name": "Godot Full Control MCP",
-      "description": "Alternative high-coverage Godot MCP implementation. Use only when its endpoint is explicitly exposed as remote HTTP.",
+      "id": "godot-full-control-157",
+      "name": "Godot Full Control 157",
+      "description": "High-coverage Godot 4 MCP implementation with deep scene, runtime, rendering, audio, animation and physics controls.",
       "urlEnv": "HYOUKA_GODOT_FULL_MCP_URL",
       "enabled": true,
       "source": "https://github.com/tugcantopaloglu/godot-mcp",
@@ -65,28 +76,83 @@
       "capabilities": [
         "scene-manipulation",
         "scripting",
-        "rendering",
+        "2d-rendering",
+        "3d-rendering",
         "ui",
         "audio",
         "animation",
         "physics",
+        "signals",
+        "runtime-input",
         "project-management"
       ]
     },
     {
-      "id": "godot-rust-mcp",
-      "name": "Godot Rust MCP",
-      "description": "Rust Godot MCP alternative with editor bridge and viewport capture. Its upstream transport is currently local, so no URL is configured by default.",
-      "urlEnv": "HYOUKA_GODOT_RUST_MCP_URL",
+      "id": "godot-live-180",
+      "name": "Godot Live Control 180",
+      "description": "Godot 4.7-focused MCP with project/build/export, live game control, screenshots, scene inspection and full-control operations.",
+      "urlEnv": "HYOUKA_GODOT_LIVE_MCP_URL",
       "enabled": true,
-      "source": "https://github.com/teratron/godot-mcp",
+      "source": "https://github.com/Fulviuus/godot-mcp",
+      "capabilities": [
+        "project-inspection",
+        "scene-parsing",
+        "script-validation",
+        "build",
+        "export",
+        "live-run",
+        "live-scene-tree",
+        "live-eval",
+        "hot-reload",
+        "screenshots",
+        "runtime-input",
+        "deep-editor-control"
+      ]
+    },
+    {
+      "id": "sfxmint",
+      "name": "SFXMint",
+      "description": "Public MCP for searchable and hotlinkable CC0 sound effects.",
+      "url": "https://sfxmint.com/mcp",
+      "enabled": true,
+      "source": "https://github.com/flreey/sfxmint-mcp",
+      "capabilities": [
+        "sound-effects",
+        "foley",
+        "ui-sounds",
+        "search",
+        "cc0-audio"
+      ]
+    },
+    {
+      "id": "sfx-gen-local",
+      "name": "SFX Generator Local",
+      "description": "Optional local Streamable HTTP SFX generator using Stable Audio Open for offline/local production.",
+      "urlEnv": "HYOUKA_SFX_MCP_URL",
+      "enabled": true,
+      "source": "https://github.com/JimCline/sfx-gen-mcp",
       "license": "MIT",
       "capabilities": [
-        "editor-bridge",
-        "scene-tree",
-        "node-control",
-        "viewport-capture",
-        "headless-cli"
+        "sound-effects",
+        "foley",
+        "ambience",
+        "variation-generation",
+        "local-audio"
+      ]
+    },
+    {
+      "id": "free-image-local",
+      "name": "Free Image MCP",
+      "description": "Optional free image generation provider for concept art, sprites, icons, tiles and backgrounds.",
+      "urlEnv": "HYOUKA_FREE_IMAGE_MCP_URL",
+      "enabled": true,
+      "source": "https://github.com/TomasThrawat",
+      "capabilities": [
+        "concept-art",
+        "sprites",
+        "icons",
+        "tiles",
+        "backgrounds"
       ]
     }
   ]
