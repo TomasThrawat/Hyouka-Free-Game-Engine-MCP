@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse, urlencode
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -184,21 +185,32 @@ def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
     base = "http://127.0.0.1:" + str(info["port"])
     if tool_id == "godot-game-status":
         with urlopen(Request(base + "/state"), timeout=5) as response:
-            return json.loads(response.read())
+            result = json.loads(response.read())
+        session_data = load_session(pid=pid) or {}
+        stdout, stderr = read_logs(session_data)
+        result.update({"pid": pid, "stdoutTail": stdout[-6000:], "stderrTail": stderr[-6000:]})
+        return result
     if tool_id == "godot-game-view":
-        with urlopen(Request(base + "/view"), timeout=10) as response:
-            data = response.read()
-            content_type = response.headers.get("Content-Type", "")
-            if not content_type.startswith("image/png"):
-                return json.loads(data)
-            return {
+        try:
+            with urlopen(Request(base + "/view"), timeout=30) as response:
+                data = response.read()
+                content_type = response.headers.get("Content-Type", "")
+                if not content_type.startswith("image/png"):
+                    return json.loads(data)
+                return {
                 "status":"ok",
                 "engine":"Godot",
                 "pid":pid,
                 "width":int(response.headers.get("X-Godot-Viewport-Width","0")),
                 "height":int(response.headers.get("X-Godot-Viewport-Height","0")),
-                "content":[{"type":"image","data":base64.b64encode(data).decode("ascii"),"mimeType":"image/png"}],
-            }
+                    "content":[{"type":"image","data":base64.b64encode(data).decode("ascii"),"mimeType":"image/png"}],
+                }
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")
+            return {"status":"error","engine":"Godot","httpStatus":exc.code,"message":body}
+        except URLError as exc:
+            return {"status":"error","engine":"Godot","message":str(exc)}
+
     if len(args) < 2:
         raise ValueError("godot-game-input requires PID and a JSON event")
     event = json.loads(args[1])
