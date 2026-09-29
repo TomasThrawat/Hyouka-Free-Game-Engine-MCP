@@ -12,6 +12,7 @@ export type RemoteMcpProvider = {
   url?: string;
   urlEnv?: string;
   urlEnvFallback?: string;
+  urlSuffix?: string;
   tokenEnv?: string;
   enabled?: boolean;
   source?: string;
@@ -127,12 +128,30 @@ function resolveUrl(provider: RemoteMcpProvider): string | null {
     (key): key is string => Boolean(key),
   );
 
+  let raw: string | null = null;
   for (const key of envKeys) {
     const value = process.env[key]?.trim();
-    if (value) return value.replace(/\/$/, "");
+    if (value) {
+      raw = value;
+      break;
+    }
   }
 
-  return provider.url?.trim().replace(/\/$/, "") || null;
+  if (!raw) {
+    raw = provider.url?.trim() || null;
+  }
+
+  if (!raw) return null;
+
+  const normalized = raw.replace(/\/$/, "");
+  if (!provider.urlSuffix) return normalized;
+
+  const suffix = provider.urlSuffix.startsWith("/")
+    ? provider.urlSuffix
+    : "/" + provider.urlSuffix;
+
+  if (normalized.endsWith(suffix)) return normalized;
+  return normalized + suffix;
 }
 
 function bearerToken(provider: RemoteMcpProvider): string | undefined {
