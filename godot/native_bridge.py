@@ -168,14 +168,51 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     save_session(wd, p.pid, port)
     return {"status":"started","pid":p.pid,"command":cmd,"cwd":str(wd),"nativeGodotControl":True,"port":port}
 
+def native_start_project(args, cwd=None, timeout=120):
+    args = list(args)
+    repo_url = None
+    repo_ref = "main"
+    clean = []
+    index = 0
+    while index < len(args):
+        value = args[index]
+        if value == "--repo-url":
+            if index + 1 >= len(args):
+                raise ValueError("--repo-url requires a value")
+            repo_url = args[index + 1]
+            index += 2
+        elif value == "--repo-ref":
+            if index + 1 >= len(args):
+                raise ValueError("--repo-ref requires a value")
+            repo_ref = args[index + 1]
+            index += 2
+        else:
+            clean.append(value)
+            index += 1
+
+    if repo_url:
+        project_dir = bridge.sync_github_repo(repo_url, repo_ref)
+        imported = ORIGINAL_RUN(
+            ["--headless", "--editor", "--import", "--quit"],
+            cwd=str(project_dir),
+            timeout=180,
+            bg=False,
+        )
+        if imported.get("status") != "ok":
+            raise ValueError("Godot import failed: " + str(imported.get("stderr", ""))[-4000:])
+        cwd = str(project_dir)
+    else:
+        project_dir = bridge.inside(cwd)
+        cwd = str(project_dir)
+
+    if "--path" not in clean and "-p" not in clean:
+        clean = ["--path", str(project_dir)] + clean
+
+    return native_run(clean, cwd, timeout, True)
+
 def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
-    global _NATIVE_LAUNCH
     if tool_id == "godot-run-project" and bg:
-        _NATIVE_LAUNCH = True
-        try:
-            return ORIGINAL_INVOKE(tool_id, args, cwd, timeout, bg)
-        finally:
-            _NATIVE_LAUNCH = False
+        return native_start_project(args, cwd, timeout)
     if tool_id not in {"godot-game-status","godot-game-view","godot-game-input"}:
         return ORIGINAL_INVOKE(tool_id, args, cwd, timeout, bg)
     if not args or not str(args[0]).isdigit():
