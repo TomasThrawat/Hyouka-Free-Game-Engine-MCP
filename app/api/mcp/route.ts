@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { createMcpHandler } from "mcp-handler";
 import * as z from "zod/v4";
 
@@ -20,7 +23,10 @@ async function base() {
   }
 
   try {
-    const r = await fetch(CONFIG + "?t=" + Date.now(), { cache: "no-store" });
+    const r = await fetch(CONFIG + "?t=" + Date.now(), {
+      cache: "no-store",
+      headers: { "cache-control": "no-cache", pragma: "no-cache" },
+    });
     const x = await r.json();
     return x.status === "ok" && x.url
       ? String(x.url).replace(/\/$/, "")
@@ -93,9 +99,40 @@ const common = z.object({
   background: z.boolean().optional(),
 });
 
-const out = (x: unknown) => ({
-  content: [{ type: "text" as const, text: JSON.stringify(x, null, 2) }],
-});
+const out = (x: unknown) => {
+  if (
+    x &&
+    typeof x === "object" &&
+    Array.isArray((x as { content?: unknown }).content)
+  ) {
+    const raw = (x as { content: unknown[] }).content;
+    const imageBlocks = raw.filter(
+      (block): block is { type: "image"; data: string; mimeType: string } =>
+        !!block &&
+        typeof block === "object" &&
+        (block as { type?: unknown }).type === "image" &&
+        typeof (block as { data?: unknown }).data === "string" &&
+        typeof (block as { mimeType?: unknown }).mimeType === "string",
+    );
+    if (imageBlocks.length > 0) {
+      const metadata = { ...(x as Record<string, unknown>) };
+      delete metadata.content;
+      return {
+        content: [
+          ...imageBlocks,
+          {
+            type: "text" as const,
+            text: JSON.stringify(metadata, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(x, null, 2) }],
+  };
+};
 
 function toolName(id: string, used: Set<string>) {
   const baseName = ("godot_" + id.replace(/[^A-Za-z0-9_.-]/g, "_")).slice(0, 120);
