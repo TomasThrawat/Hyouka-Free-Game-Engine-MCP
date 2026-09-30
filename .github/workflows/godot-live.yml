@@ -135,7 +135,7 @@ jobs:
           URL=""
           READY=0
           for i in $(seq 1 60); do
-            URL=$(python3 -c 'import re,sys; t=open("/tmp/cloudflared.log", errors="replace").read(); t=re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", t); m=re.search(r"https://[A-Za-z0-9][A-Za-z0-9.-]*\.trycloudflare\.com(?:/[^[:space:]]*)?", t); print(m.group(0) if m else "")')
+            URL=$(python3 -c 'import re,sys; t=open("/tmp/cloudflared.log", errors="replace").read(); t=re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", t); m=re.search(r"https://[A-Za-z0-9][A-Za-z0-9.-]*\.trycloudflare\.com(?:/\S*)?", t); print(m.group(0) if m else "")')
             if test -n "$URL" && curl -fsS "$URL/health" >/dev/null 2>&1; then
               READY=1
               break
