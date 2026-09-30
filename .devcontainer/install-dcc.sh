@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BLENDER_VERSION="${BLENDER_VERSION}"
+BLENDER_VERSION="${BLENDER_VERSION:-5.2.2}"
 BLENDER_DIR="/opt/blender-${BLENDER_VERSION}"
 BLENDER_ARCHIVE="/tmp/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
 DCC_SITE="/opt/dcc-mcp-python"
