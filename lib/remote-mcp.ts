@@ -1,9 +1,9 @@
 import {
   Client,
   StreamableHTTPClientTransport,
-  fromJsonSchema,
-} from "@modelcontextprotocol/sdk/client";
-import type { McpServer } from "@modelcontextprotocol/sdk/server";
+} from "@modelcontextprotocol/client";
+import { fromJsonSchema } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 export type RemoteMcpProvider = {
   id: string;
