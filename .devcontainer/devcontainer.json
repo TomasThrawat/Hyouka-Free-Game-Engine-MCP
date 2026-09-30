@@ -37,6 +37,6 @@
       "documentationUrl": "https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces"
     }
   },
-  "postCreateCommand": "bash .devcontainer/install-dcc.sh",
-  "postStartCommand": "bash .devcontainer/start-dcc.sh"
+  "postCreateCommand": "bash .devcontainer/launch-dcc-background.sh",
+  "postStartCommand": "bash .devcontainer/launch-dcc-background.sh"
 }
