@@ -26,7 +26,7 @@ on:
         default: "240"
         type: string
       verification_only:
-        description: "Run CI verification without starting a long-lived successor handoff"
+        description: "Run all startup and E2E/public checks, then exit cleanly without successor handoff"
         required: false
         default: false
         type: boolean
@@ -57,13 +57,13 @@ jobs:
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl unzip python3 jq xvfb weston
+          sudo apt-get install -y curl unzip python3 jq xvfb
 
       - name: Install Godot 4.7.2 .NET
         run: |
           set -e
-          curl -fL --retry 8 -o /tmp/godot.zip             https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
-          curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt             https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
+          curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
+          curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
           CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
           test -n "$CHECKSUM"
           printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
@@ -96,24 +96,24 @@ jobs:
             sleep 1
           done
           test -S /tmp/.X11-unix/X99
-          nohup env             DISPLAY="$DISPLAY"             GODOT_BIN="$GODOT_BIN"             GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE"             GODOT_BRIDGE_HOST="127.0.0.1"             python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
+          nohup env DISPLAY="$DISPLAY" GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE" GODOT_BRIDGE_HOST="127.0.0.1" python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
           READY=0
           for i in $(seq 1 45); do
-            if curl -fsS http://127.0.0.1:9765/health >/dev/null 2>&1; then
+            if curl -fsS --max-time 5 http://127.0.0.1:9765/health >/dev/null 2>&1; then
               READY=1
               break
             fi
             sleep 1
           done
           test "$READY" -eq 1
-          curl -fsS http://127.0.0.1:9765/health
-          curl -fsS http://127.0.0.1:9765/selftest
+          curl -fsS --max-time 10 http://127.0.0.1:9765/health
+          curl -fsS --max-time 20 http://127.0.0.1:9765/selftest
 
       - name: Install current cloudflared
         run: |
           set -e
           VERSION=2026.9.3
-          curl -fsSL "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/$VERSION" -o /tmp/cloudflared-release.json
+          curl -fsSL --max-time 20 "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/$VERSION" -o /tmp/cloudflared-release.json
           URL=$(python3 - <<'PY'
           import json
           d=json.load(open('/tmp/cloudflared-release.json'))
@@ -127,7 +127,7 @@ jobs:
           PY
           )
           test -n "$DIGEST"
-          curl -fL --retry 8 -o /tmp/cloudflared "$URL"
+          curl -fL --retry 8 --max-time 60 -o /tmp/cloudflared "$URL"
           printf '%s  /tmp/cloudflared\n' "$DIGEST" | sha256sum -c -
           chmod +x /tmp/cloudflared
           /tmp/cloudflared --version
@@ -140,8 +140,8 @@ jobs:
           URL=""
           READY=0
           for i in $(seq 1 60); do
-            URL=$(python3 -c 'import re,sys; t=open("/tmp/cloudflared.log", errors="replace").read(); t=re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", t); m=re.search(r"https://[A-Za-z0-9][A-Za-z0-9.-]*\.trycloudflare\.com(?:/\S*)?", t); print(m.group(0) if m else "")')
-            if test -n "$URL" && curl -fsS "$URL/health" >/dev/null 2>&1; then
+            URL=$(python3 -c 'import re; t=open("/tmp/cloudflared.log", errors="replace").read(); t=re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", t); m=re.search(r"https://[A-Za-z0-9][A-Za-z0-9.-]*\.trycloudflare\.com(?:/\S*)?", t); print(m.group(0) if m else "")')
+            if test -n "$URL" && curl -fsS --max-time 10 "$URL/health" >/dev/null 2>&1; then
               READY=1
               break
             fi
@@ -152,15 +152,16 @@ jobs:
           echo "Tunnel is ready"
 
       - name: Publish live bridge metadata
+        if: \${{ inputs.verification_only != true }}
         env:
-          URL: ${{ steps.tunnel.outputs.url }}
-          DURATION: ${{ inputs.duration_minutes || '10' }}
+          URL: \${{ steps.tunnel.outputs.url }}
+          DURATION: \${{ inputs.duration_minutes || '10' }}
         run: |
           set -e
           for attempt in 1 2 3; do
             git fetch origin main
             git reset --hard origin/main
-            jq -n               --arg url "$URL"               --arg duration "$DURATION"               --arg run "$GITHUB_RUN_ID"               '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration,ownerRunId:$run}'               > runtime/godot-bridge.json
+            jq -n --arg url "$URL" --arg duration "$DURATION" --arg run "$GITHUB_RUN_ID" '{status:"ok",engine:"Godot",url:$url,runtime:"Godot 4.7.2-stable .NET Linux x86_64",source:"https://github.com/godotengine/godot",durationMinutes:$duration,ownerRunId:$run}' > runtime/godot-bridge.json
             git add runtime/godot-bridge.json
             if git diff --cached --quiet; then
               echo "Metadata unchanged."
@@ -179,8 +180,18 @@ jobs:
         run: |
           set -e
           TEST_ROOT="$GITHUB_WORKSPACE/.godot-native-e2e"
+          PID=""
+          cleanup() {
+            set +e
+            if test -n "$PID" && test "$PID" != "null" && [[ "$PID" =~ ^[0-9]+$ ]]; then
+              curl -fsS --max-time 10 -X POST http://127.0.0.1:9765/stop -H 'content-type: application/json' -d "$(jq -nc --argjson pid "$PID" '{pid:$pid}')" >/tmp/godot-native-e2e-stop.json 2>/dev/null || true
+            fi
+            rm -rf "$TEST_ROOT"
+          }
+          trap cleanup EXIT
           rm -rf "$TEST_ROOT"
           mkdir -p "$TEST_ROOT"
+
           cat > "$TEST_ROOT/project.godot" <<'EOF'
           [application]
           config/name="Godot MCP Native E2E"
@@ -188,16 +199,19 @@ jobs:
           [display]
           window/size/viewport_width=320
           window/size/viewport_height=200
+          window/vsync/vsync_mode=0
           [rendering]
           renderer/rendering_method="gl_compatibility"
           renderer/rendering_method.mobile="gl_compatibility"
           EOF
+
           cat > "$TEST_ROOT/Main.tscn" <<'EOF'
           [gd_scene load_steps=2 format=3]
           [ext_resource type="Script" path="res://main.gd" id="1"]
           [node name="Root" type="Node2D"]
           script = ExtResource("1")
           EOF
+
           cat > "$TEST_ROOT/main.gd" <<'EOF'
           extends Node2D
           func _ready() -> void:
@@ -220,35 +234,18 @@ jobs:
                   file.store_string("clicked")
                   file.close()
           EOF
-          export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
-          mkdir -p "$XDG_RUNTIME_DIR"
-          chmod 700 "$XDG_RUNTIME_DIR"
-          export WAYLAND_DISPLAY=godot-e2e
-          weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 >/tmp/weston-godot-e2e.log 2>&1 &
-          WESTON_PID=$!
-          trap 'kill "$WESTON_PID" 2>/dev/null || true' EXIT
-          WAYLAND_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-          WAYLAND_READY=0
-          for i in $(seq 1 30); do
-            if test -S "$WAYLAND_SOCKET"; then
-              WAYLAND_READY=1
-              break
-            fi
-            if ! kill -0 "$WESTON_PID" 2>/dev/null; then
-              cat /tmp/weston-godot-e2e.log
-              exit 1
-            fi
-            sleep 1
-          done
-          test "$WAYLAND_READY" -eq 1
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","wayland","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
-          START=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
+
+          export DISPLAY=:99
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
+          START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
+          test "$(jq -r '.status' <<<"$START")" = "started"
           PID=$(jq -r '.pid' <<<"$START")
           test "$PID" != "null"
+
           STATUS=""
           for attempt in $(seq 1 10); do
-            STATUS=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
+            STATUS=$(curl -sS --fail-with-body --max-time 15 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-status",args:[$pid]}')")
             if test "$(jq -r '.status' <<<"$STATUS")" = "ok"; then
               break
             fi
@@ -256,8 +253,8 @@ jobs:
           done
           echo "$STATUS" | jq '{status,pid,viewportWidth,viewportHeight,message,stdoutTail,stderrTail}'
           test "$(jq -r '.status' <<<"$STATUS")" = "ok"
-          VIEW=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
-          echo "$VIEW"
+
+          VIEW=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$(jq -nc --arg pid "$PID" '{toolId:"godot-game-view",args:[$pid]}')")
           echo "$VIEW" | jq '{status,pid,width,height,httpStatus,message,contentType:(.content[0].mimeType // null),hasImage:((.content[0].data // "") | length > 0)}'
           test "$(jq -r '.status' <<<"$VIEW")" = "ok"
           test "$(jq -r '.content[0].mimeType' <<<"$VIEW")" = "image/png"
@@ -269,39 +266,36 @@ jobs:
           assert b.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG"
           print("PNG bytes:", len(b))
           PY
+
           INPUT_JSON=$(jq -nc --arg pid "$PID" '{toolId:"godot-game-input",args:[$pid,"{\"type\":\"click\",\"x\":160,\"y\":100}"]}')
-          INPUT=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$INPUT_JSON")
+          INPUT=$(curl -sS --fail-with-body --max-time 15 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$INPUT_JSON")
           echo "$INPUT"
           test "$(jq -r '.status' <<<"$INPUT")" = "ok"
           sleep 1
           test -f "$TEST_ROOT/clicked.txt"
           grep -qx "clicked" "$TEST_ROOT/clicked.txt"
-          curl -fsS -X POST http://127.0.0.1:9765/stop -H 'content-type: application/json' -d "$(jq -nc --argjson pid "$PID" '{pid:$pid}')"
-          rm -rf "$TEST_ROOT"
+          echo "Native E2E completed successfully."
+
       - name: Verify public bridge
         env:
-          URL: ${{ steps.tunnel.outputs.url }}
+          URL: \${{ steps.tunnel.outputs.url }}
         run: |
           set -e
-          curl -fsS "$URL/health"
-          curl -fsS "$URL/discover" | jq '.status, .engine, (.tools | length)'
-          curl -fsS "$URL/selftest" | jq '.status, .nativeControlCheck.status, .smokeTest.status'
-          curl -fsS "$URL/find?q=godot-game-view" | jq '.tools[0].id, .tools[0].kind'
-          curl -fsS "$URL/find?q=godot-game-input" | jq '.tools[0].id, .tools[0].kind'
+          curl -fsS --max-time 15 "$URL/health"
+          curl -fsS --max-time 30 "$URL/discover" | jq '.status, .engine, (.tools | length)'
+          curl -fsS --max-time 30 "$URL/selftest" | jq '.status, .nativeControlCheck.status, .smokeTest.status'
+          curl -fsS --max-time 15 "$URL/find?q=godot-game-view" | jq '.tools[0].id, .tools[0].kind'
+          curl -fsS --max-time 15 "$URL/find?q=godot-game-input" | jq '.tools[0].id, .tools[0].kind'
 
       - name: Hand off to successor runner
+        if: \${{ inputs.verification_only != true }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_EVENT: ${{ github.event_name }}
-          INPUT_MINUTES: ${{ inputs.duration_minutes }}
-          INPUT_HANDOFF: ${{ inputs.handoff_after_minutes }}
-          VERIFICATION_ONLY: ${{ inputs.verification_only }}
+          GH_TOKEN: \${{ github.token }}
+          RUN_EVENT: \${{ github.event_name }}
+          INPUT_MINUTES: \${{ inputs.duration_minutes }}
+          INPUT_HANDOFF: \${{ inputs.handoff_after_minutes }}
         run: |
           set -e
-          if [ "$VERIFICATION_ONLY" = "true" ]; then
-            echo "Verification-only run: long-lived handoff skipped."
-            exit 0
-          fi
           if [ "$RUN_EVENT" = "push" ]; then
             HANDOFF_MINUTES=240
             NEXT_MINUTES=300
@@ -320,5 +314,5 @@ jobs:
             HANDOFF_MINUTES="$INPUT_HANDOFF"
           fi
           sleep $((HANDOFF_MINUTES*60))
-          curl -fsSL -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/godot-live.yml/dispatches"             -d "{\"ref\":\"main\",\"inputs\":{\"duration_minutes\":\"$NEXT_MINUTES\",\"handoff_after_minutes\":\"240\"}}"
+          curl -fsSL --max-time 30 -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/\${{ github.repository }}/actions/workflows/godot-live.yml/dispatches" -d "{\"ref\":\"main\",\"inputs\":{\"duration_minutes\":\"$NEXT_MINUTES\",\"handoff_after_minutes\":\"240\"}}"
           echo "Successor workflow dispatched: $NEXT_MINUTES minutes"
