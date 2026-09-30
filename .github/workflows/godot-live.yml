@@ -120,6 +120,7 @@ jobs:
               -Dbackend-x11=false \
               -Dbackend-default=headless \
               -Drenderer-gl=false \
+              -Drenderer-vulkan=false \
               -Dxwayland=false \
               -Dsystemd=false \
               -Dimage-jpeg=false \
