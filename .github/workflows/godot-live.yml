@@ -199,10 +199,10 @@ jobs:
           [display]
           window/size/viewport_width=320
           window/size/viewport_height=200
+          window/vsync/vsync_mode=0
           [rendering]
           renderer/rendering_method="gl_compatibility"
           renderer/rendering_method.mobile="gl_compatibility"
-          display/window/vsync/vsync_mode=0
           EOF
 
           cat > "$TEST_ROOT/Main.tscn" <<'EOF'
