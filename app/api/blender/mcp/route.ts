@@ -1,4 +1,4 @@
-import { createDccHttpMcpHandler } from "../../../../../../lib/dcc-http-mcp";
+import { createDccHttpMcpHandler } from "../../../../lib/dcc-http-mcp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
