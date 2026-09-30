@@ -139,85 +139,8 @@ EOF
 sudo nginx -t -c /tmp/hyouka-dcc-nginx.conf
 sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
-echo "== Configure public Codespaces forwarding =="
-command -v gh >/dev/null 2>&1 || { echo "GitHub CLI is required but was not installed."; exit 1; }
-
-PORT_VISIBILITY_OK=0
-for attempt in $(seq 1 20); do
-  if GH_TOKEN="${GITHUB_TOKEN}" gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" >/tmp/hyouka-ports-visibility.log 2>&1; then
-    PORT_VISIBILITY_OK=1
-    break
-  fi
-  echo "Port visibility attempt ${attempt}/20 failed; retrying..."
-  tail -n 20 /tmp/hyouka-ports-visibility.log || true
-  sleep 2
-done
-
-if [[ "$PORT_VISIBILITY_OK" -ne 1 ]]; then
-  echo "Direct Codespaces port visibility failed; starting authenticated Actions relay."
-
-  RELAY_SECRET="HYOUKA_DCC_CODESPACE_GH_TOKEN"
-  RELAY_WORKFLOW=".github/workflows/dcc-port-visibility-relay.yml"
-  relay_exit=0
-
-  if ! printf '%s' "$GITHUB_TOKEN" | gh secret set "$RELAY_SECRET" -R "$GITHUB_REPOSITORY"; then
-    echo "Failed to store the temporary Codespaces token as a repository secret."
-    cat /tmp/hyouka-ports-visibility.log || true
-    exit 1
-  fi
-
-  cleanup_relay_secret() {
-    gh secret delete "$RELAY_SECRET" -R "$GITHUB_REPOSITORY" --yes >/dev/null 2>&1 || true
-  }
-  trap cleanup_relay_secret EXIT
-
-  if ! gh workflow run "$RELAY_WORKFLOW" -R "$GITHUB_REPOSITORY" --ref main -f codespace_name="$CODESPACE_NAME"; then
-    echo "Failed to dispatch the DCC port visibility relay workflow."
-    exit 1
-  fi
-
-  relay_run_id=""
-  for attempt in $(seq 1 30); do
-    relay_run_id="$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$RELAY_WORKFLOW" --branch main --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
-    if [[ -n "$relay_run_id" ]]; then
-      break
-    fi
-    sleep 2
-  done
-
-  if [[ -z "$relay_run_id" ]]; then
-    echo "Could not resolve the relay workflow run ID."
-    exit 1
-  fi
-
-  set +e
-  gh run watch "$relay_run_id" -R "$GITHUB_REPOSITORY" --exit-status
-  relay_exit=$?
-  set -e
-
-  if [[ "$relay_exit" -ne 0 ]]; then
-    echo "DCC port visibility relay failed."
-    exit "$relay_exit"
-  fi
-
-  echo "DCC public port relay completed successfully."
-fi
-
-echo "== Verify public Codespaces forwarding =="
-PORTS_JSON="$(GH_TOKEN="${GITHUB_TOKEN}" gh codespace ports -c "${CODESPACE_NAME}" --json sourcePort,visibility,browseUrl)"
-python3 -c '
-import json, sys
-ports = json.loads(sys.argv[1])
-expected = {9765, 9797}
-seen = {int(p["sourcePort"]) for p in ports if int(p["sourcePort"]) in expected}
-visibility = {int(p["sourcePort"]): p["visibility"] for p in ports if int(p["sourcePort"]) in expected}
-missing = expected - seen
-bad = {port: value for port, value in visibility.items() if value != "public"}
-if missing or bad:
-    raise SystemExit(f"Port visibility verification failed: missing={sorted(missing)}, bad={bad}")
-for port in sorted(expected):
-    print(f"{port}: {visibility[port]}")
-' "$PORTS_JSON"
+echo "== Codespaces forwarding =="
+echo "Ports 9765/9797 are declared public in .devcontainer/devcontainer.json."
 
 echo "DCC MCP runtime ready"
 echo "BLENDER_PUBLIC_URL=https://${CODESPACE_NAME}-9765.app.github.dev/mcp"
