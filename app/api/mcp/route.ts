@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { createMcpHandler } from "mcp-handler";
+import { fromJsonSchema } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import {
   discoverRemoteMcpTools,
@@ -159,6 +160,45 @@ function toolName(id: string, used: Set<string>) {
   return name;
 }
 
+function registerGodotIntegratedDccTools(
+  server: Parameters<Parameters<typeof createMcpHandler>[0]>[0],
+  remoteTools: Awaited<ReturnType<typeof discoverRemoteMcpTools>>,
+  used: Set<string>,
+) {
+  for (const tool of remoteTools) {
+    const providerPrefix =
+      tool.provider.id === "blender-dcc"
+        ? "blender__"
+        : tool.provider.id === "krita"
+          ? "krita__"
+          : null;
+
+    if (!providerPrefix) continue;
+
+    const name = toolName(providerPrefix + tool.name, used);
+
+    server.registerTool(
+      name,
+      {
+        title:
+          (tool.provider.id === "blender-dcc" ? "Godot / Blender: " : "Godot / Krita: ") +
+          tool.name,
+        description:
+          tool.description ??
+          "Integrated " +
+            (tool.provider.id === "blender-dcc" ? "Blender" : "Krita") +
+            " MCP tool exposed directly through the unified Godot MCP.",
+        inputSchema: fromJsonSchema(tool.inputSchema),
+      },
+      async (args) =>
+        tool.client.callTool({
+          name: tool.name,
+          arguments: (args ?? {}) as Record<string, unknown>,
+        }),
+    );
+  }
+}
+
 async function createHandler() {
   const [inventory, remoteTools] = await Promise.all([
     discoverTools(),
@@ -263,6 +303,7 @@ async function createHandler() {
       },
       async (args) => out(await invokeRemoteMcpTool(args.providerId, args.toolName, args.args)),
     );
+
     server.registerTool(
       "mcp_refresh_all_tools",
       {
@@ -304,6 +345,7 @@ async function createHandler() {
       );
       used.add(alias);
     }
+
     for (const tool of inventory) {
       const name = toolName(tool.id, used);
       const description =
@@ -324,6 +366,7 @@ async function createHandler() {
       );
     }
 
+    registerGodotIntegratedDccTools(server, remoteTools, used);
     registerRemoteMcpTools(server, remoteTools, used);
   });
 }
