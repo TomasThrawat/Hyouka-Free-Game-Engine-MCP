@@ -5,21 +5,10 @@
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "forwardPorts": [
-    9765,
-    9797
-  ],
+  "forwardPorts": [9765,9797],
   "portsAttributes": {
-    "9765": {
-      "label": "Blender MCP",
-      "protocol": "http",
-      "onAutoForward": "notify"
-    },
-    "9797": {
-      "label": "Krita MCP",
-      "protocol": "http",
-      "onAutoForward": "notify"
-    }
+    "9765": {"label":"Blender MCP","protocol":"http","onAutoForward":"notify"},
+    "9797": {"label":"Krita MCP","protocol":"http","onAutoForward":"notify"}
   },
   "containerEnv": {
     "DCC_MCP_BLENDER_INTERNAL_PORT": "18765",
@@ -29,9 +18,7 @@
   },
   "customizations": {
     "vscode": {
-      "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash"
-      }
+      "settings": {"terminal.integrated.defaultProfile.linux":"bash"}
     }
   },
   "secrets": {
@@ -40,7 +27,7 @@
       "documentationUrl": "https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces"
     }
   },
-  "postCreateCommand": "bash .devcontainer/launch-dcc-background.sh",
+  "postCreateCommand": "true",
   "postStartCommand": "bash .devcontainer/launch-dcc-background.sh",
   "postAttachCommand": "bash .devcontainer/launch-dcc-background.sh"
 }
