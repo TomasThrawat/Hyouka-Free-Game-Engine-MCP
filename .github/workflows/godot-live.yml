@@ -57,7 +57,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           timeout 300s sudo apt-get update -o Acquire::Retries=3
-          timeout 300s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq xvfb
+          timeout 300s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq xvfb weston
 
       - name: Install Godot 4.7.2 .NET
         run: |
@@ -96,7 +96,20 @@ jobs:
             sleep 1
           done
           test -S /tmp/.X11-unix/X99
-          nohup env DISPLAY="$DISPLAY" XDG_RUNTIME_DIR="" WAYLAND_DISPLAY="" GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE" GODOT_BRIDGE_HOST="127.0.0.1" python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          export XDG_SESSION_TYPE=wayland
+          export WAYLAND_DISPLAY=godot-e2e
+          nohup weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" >/tmp/weston-godot-e2e.log 2>&1 &
+          WESTON_PID=$!
+          for i in $(seq 1 30); do
+            if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+            if ! kill -0 "$WESTON_PID" 2>/dev/null; then cat /tmp/weston-godot-e2e.log; exit 1; fi
+            sleep 1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          nohup env DISPLAY="" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" GODOT_WAYLAND_DISABLE_LIBDECOR=1 GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE" GODOT_BRIDGE_HOST="127.0.0.1" python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
           READY=0
           for i in $(seq 1 45); do
             if curl -fsS --max-time 5 http://127.0.0.1:9765/health >/dev/null 2>&1; then
@@ -235,9 +248,10 @@ jobs:
                   file.close()
           EOF
 
-          export DISPLAY=:99
-          test -S /tmp/.X11-unix/X99
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--disable-vsync","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
+          export WAYLAND_DISPLAY=godot-e2e
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","wayland","--disable-vsync","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           test "$(jq -r '.status' <<<"$START")" = "started"
