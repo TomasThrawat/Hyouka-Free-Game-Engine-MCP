@@ -1,0 +1,48 @@
+name: DCC Runtime Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    env:
+      BLENDER_MCP_URL: https://hyouka-dcc-mcp-runtime-fixed-pj9w45pq474gh7g5w-9765.app.github.dev/mcp
+      KRITA_MCP_URL: https://hyouka-dcc-mcp-runtime-fixed-pj9w45pq474gh7g5w-9797.app.github.dev/mcp
+    steps:
+      - name: Probe public DCC endpoints
+        shell: bash
+        run: |
+          set -u
+          failed=0
+
+          probe() {
+            local name="$1"
+            local url="$2"
+            local code=""
+            local curl_rc=0
+
+            echo "== ${name} =="
+            for attempt in 1 2 3 4 5; do
+              code="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 "$url" 2>/tmp/curl.err)"
+              curl_rc=$?
+              if [[ "${curl_rc}" -eq 0 ]]; then
+                echo "attempt=${attempt} http=${code}"
+                if [[ "${code}" == "401" || "${code}" == "405" || "${code}" == "406" || "${code}" == "200" || "${code}" == "202" ]]; then
+                  return 0
+                fi
+              else
+                echo "attempt=${attempt} curl_exit=${curl_rc}"
+                sed -n '1,40p' /tmp/curl.err || true
+              fi
+              sleep 3
+            done
+
+            echo "${name} public endpoint did not return an expected live HTTP response"
+            failed=1
+          }
+
+          probe "Blender MCP" "${BLENDER_MCP_URL}"
+          probe "Krita MCP" "${KRITA_MCP_URL}"
+
+          exit "${failed}"
