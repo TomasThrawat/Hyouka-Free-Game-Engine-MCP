@@ -99,20 +99,39 @@ jobs:
           export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
-          export WAYLAND_DISPLAY=godot-e2e
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/godot-labwc-config"
+          mkdir -p "$XDG_CONFIG_HOME/labwc"
+          export LABWC_ENV_FILE="$RUNNER_TEMP/godot-labwc-env"
+          cat > "$XDG_CONFIG_HOME/labwc/autostart" <<'EOF'
+          #!/bin/sh
+          printf 'WAYLAND_DISPLAY=%s\n' "$WAYLAND_DISPLAY" > "$LABWC_ENV_FILE"
+          printf 'DISPLAY=%s\n' "${DISPLAY:-}" >> "$LABWC_ENV_FILE"
+          EOF
+          chmod +x "$XDG_CONFIG_HOME/labwc/autostart"
           export WLR_BACKENDS=headless
           export WLR_HEADLESS_OUTPUTS=1
           export WLR_LIBINPUT_NO_DEVICES=1
           export WLR_RENDERER=pixman
+          export LIBSEAT_BACKEND=noop
           export XDG_SESSION_TYPE=wayland
-          labwc --debug >/tmp/labwc-godot-e2e.log 2>&1 &
+          labwc >/tmp/labwc-godot-e2e.log 2>&1 &
           LABWC_PID=$!
           for i in $(seq 1 30); do
-            if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+            if test -s "$LABWC_ENV_FILE"; then break; fi
             if ! kill -0 "$LABWC_PID" 2>/dev/null; then cat /tmp/labwc-godot-e2e.log; exit 1; fi
             sleep 1
           done
-          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          test -s "$LABWC_ENV_FILE"
+          . "$LABWC_ENV_FILE"
+          export WAYLAND_DISPLAY
+          export DISPLAY
+          WAYLAND_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          for i in $(seq 1 15); do
+            if test -S "$WAYLAND_SOCKET"; then break; fi
+            if ! kill -0 "$LABWC_PID" 2>/dev/null; then cat /tmp/labwc-godot-e2e.log; exit 1; fi
+            sleep 1
+          done
+          test -S "$WAYLAND_SOCKET"
           nohup env DISPLAY="$DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE" GODOT_BRIDGE_HOST="127.0.0.1" python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
           READY=0
           for i in $(seq 1 45); do
@@ -252,7 +271,10 @@ jobs:
           EOF
 
           export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
-          export WAYLAND_DISPLAY=godot-e2e
+          test -s "$RUNNER_TEMP/godot-labwc-env"
+          . "$RUNNER_TEMP/godot-labwc-env"
+          export WAYLAND_DISPLAY
+          export DISPLAY
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
           RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","wayland","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
