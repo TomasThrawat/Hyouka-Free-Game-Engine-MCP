@@ -25,12 +25,16 @@ export async function createDccHttpMcpHandler(providerId: string) {
       registerRemoteMcpTools(server, providerTools, usedNames);
     },
     {
-      disableSse: true,
+      serverInfo: {
+        name: `hyouka-${providerId}-http-mcp`,
+        version: "1.0.0",
+      },
     },
   );
 
   return async (request: Request) => {
     const expected = process.env[GATEWAY_TOKEN_ENV]?.trim();
+
     if (!expected) {
       return Response.json(
         {
@@ -47,13 +51,13 @@ export async function createDccHttpMcpHandler(providerId: string) {
       : "";
 
     if (!supplied || supplied !== expected) {
-      return Response.json(
-        { error: "unauthorized" },
-        {
-          status: 401,
-          headers: { "WWW-Authenticate": "Bearer" },
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: {
+          "content-type": "application/json",
+          "www-authenticate": "Bearer",
         },
-      );
+      });
     }
 
     return handler(request);
