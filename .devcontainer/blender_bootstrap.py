@@ -9,6 +9,8 @@ def main() -> None:
         host="127.0.0.1",
         port=18765,
         server_name="hyouka-blender",
+        gateway_port=0,
+        admin_enabled=False,
     )
     server = McpHttpServer(registry, config)
     dispatcher = BlockingDispatcher()
