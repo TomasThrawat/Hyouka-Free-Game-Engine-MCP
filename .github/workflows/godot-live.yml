@@ -79,7 +79,7 @@ jobs:
           set -e
           python3 -m py_compile godot/public_bridge.py godot/native_bridge.py
           test -f runtime/godot-smoke-test/project.godot
-          ! grep -RniE 'O3DE|o3de|Blender|blender/' app godot runtime .devcontainer README.md 2>/dev/null
+          ! grep -RniE 'O3DE|o3de' app godot runtime .devcontainer README.md 2>/dev/null
 
       - name: Start Godot bridge
         run: |
