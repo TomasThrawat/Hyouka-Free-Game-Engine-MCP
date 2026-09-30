@@ -54,7 +54,8 @@
         "HYOUKA_BLENDER_MCP_URL",
         "BLENDER_MCP_URL",
         "BLENDER_BRIDGE_URL"
-      ]
+      ],
+      "tokenEnv": "HYOUKA_BLENDER_MCP_TOKEN"
     },
     {
       "id": "krita",
