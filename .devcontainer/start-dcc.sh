@@ -22,6 +22,15 @@ command -v gh >/dev/null 2>&1 || {
 }
 
 # Use the native GitHub CLI authentication available to the Codespace.
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  export GH_TOKEN="${GITHUB_TOKEN}"
+fi
+
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "Neither GH_TOKEN nor GITHUB_TOKEN is available in this Codespace."
+  exit 1
+fi
+
 if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
   echo "GitHub CLI authentication is unavailable for this Codespace."
   cat /tmp/hyouka-gh-auth.log || true
@@ -108,7 +117,7 @@ events {
   worker_connections 1024;
 }
 http {
-  map $http_authorization $mcp_authorized {
+  map \$http_authorization \$mcp_authorized {
     default 0;
     "Bearer ${HYOUKA_DCC_MCP_TOKEN}" 1;
   }
@@ -118,15 +127,15 @@ http {
     server_name _;
 
     location / {
-      if ($mcp_authorized = 0) { return 401; }
+      if (\$mcp_authorized = 0) { return 401; }
       proxy_pass http://127.0.0.1:18765;
       proxy_http_version 1.1;
       proxy_buffering off;
       proxy_cache off;
       proxy_read_timeout 3600s;
       proxy_send_timeout 3600s;
-      proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host \$host;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
   }
 
@@ -135,15 +144,15 @@ http {
     server_name _;
 
     location / {
-      if ($mcp_authorized = 0) { return 401; }
+      if (\$mcp_authorized = 0) { return 401; }
       proxy_pass http://127.0.0.1:19797;
       proxy_http_version 1.1;
       proxy_buffering off;
       proxy_cache off;
       proxy_read_timeout 3600s;
       proxy_send_timeout 3600s;
-      proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host \$host;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
   }
 }
