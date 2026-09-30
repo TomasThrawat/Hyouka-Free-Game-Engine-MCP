@@ -1,48 +1,34 @@
-name: DCC Runtime Smoke
-
-on:
-  workflow_dispatch:
-
-jobs:
-  smoke:
-    runs-on: ubuntu-24.04
-    env:
-      BLENDER_MCP_URL: https://hyouka-dcc-mcp-runtime-fixed-pj9w45pq474gh7g5w-9765.app.github.dev/mcp
-      KRITA_MCP_URL: https://hyouka-dcc-mcp-runtime-fixed-pj9w45pq474gh7g5w-9797.app.github.dev/mcp
-    steps:
-      - name: Probe public DCC endpoints
-        shell: bash
-        run: |
-          set -u
-          failed=0
-
-          probe() {
-            local name="$1"
-            local url="$2"
-            local code=""
-            local curl_rc=0
-
-            echo "== ${name} =="
-            for attempt in 1 2 3 4 5; do
-              code="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 "$url" 2>/tmp/curl.err)"
-              curl_rc=$?
-              if [[ "${curl_rc}" -eq 0 ]]; then
-                echo "attempt=${attempt} http=${code}"
-                if [[ "${code}" == "401" || "${code}" == "405" || "${code}" == "406" || "${code}" == "200" || "${code}" == "202" ]]; then
-                  return 0
-                fi
-              else
-                echo "attempt=${attempt} curl_exit=${curl_rc}"
-                sed -n '1,40p' /tmp/curl.err || true
-              fi
-              sleep 3
-            done
-
-            echo "${name} public endpoint did not return an expected live HTTP response"
-            failed=1
-          }
-
-          probe "Blender MCP" "${BLENDER_MCP_URL}"
-          probe "Krita MCP" "${KRITA_MCP_URL}"
-
-          exit "${failed}"
+bmFtZTogRENDIFJ1bnRpbWUgU21va2UKCm9uOgogIHdvcmtmbG93X2Rpc3Bh
+dGNoOgoKam9iczoKICBzbW9rZToKICAgIHJ1bnMtb246IHVidW50dS0yNC4w
+NAogICAgZW52OgogICAgICBCTEVOREVSX01DUF9VUkw6IGh0dHBzOi8vaHlv
+dWthLWRjYy1tY3AtcnVudGltZS1maXhlZC1wajl3NDVwcTQ3NGdoN2c1dy05
+NzY1LmFwcC5naXRodWIuZGV2L21jcAogICAgICBLUklUQV9NQ1BfVVJMOiBo
+dHRwczovL2h5b3VrYS1kY2MtbWNwLXJ1bnRpbWUtZml4ZWQtcGo5dzQ1cHE0
+NzRnaDdnNXctOTc5Ny5hcHAuZ2l0aHViLmRldi9tY3AKICAgIHN0ZXBzOgog
+ICAgICAtIG5hbWU6IFByb2JlIHB1YmxpYyBEQ0MgZW5kcG9pbnRzCiAgICAg
+ICAgc2hlbGw6IGJhc2gKICAgICAgICBydW46IHwKICAgICAgICAgIHNldCAt
+dQogICAgICAgICAgZmFpbGVkPTAKCiAgICAgICAgICBwcm9iZSgpIHsKICAg
+ICAgICAgICAgbG9jYWwgbmFtZT0iJDEiCiAgICAgICAgICAgIGxvY2FsIHVy
+bD0iJDIiCiAgICAgICAgICAgIGxvY2FsIGNvZGU9IiIKICAgICAgICAgICAg
+bG9jYWwgY3VybF9yYz0wCgogICAgICAgICAgICBlY2hvICI9PSAke25hbWV9
+ID09IgogICAgICAgICAgICBmb3IgYXR0ZW1wdCBpbiAxIDIgMyA0IDU7IGRv
+CiAgICAgICAgICAgICAgY29kZT0iJChjdXJsIC1zUyAtbyAvZGV2L251bGwg
+LXcgJyV7aHR0cF9jb2RlfScgLS1jb25uZWN0LXRpbWVvdXQgNSAtLW1heC10
+aW1lIDE1ICIkdXJsIiAyPi90bXAvY3VybC5lcnIpIgogICAgICAgICAgICAg
+IGN1cmxfcmM9JD8KICAgICAgICAgICAgICBpZiBbWyAiJHtjdXJsX3JjfSIg
+LWVxIDAgXV07IHRoZW4KICAgICAgICAgICAgICAgIGVjaG8gImF0dGVtcHQ9
+JHthdHRlbXB0fSBodHRwPSR7Y29kZX0iCiAgICAgICAgICAgICAgICBpZiBb
+WyAiJHtjb2RlfSIgPT0gIjQwMSIgfHwgIiR7Y29kZX0iID09ICI0MDUiIHx8
+ICIke2NvZGV9IiA9PSAiNDA2IiB8fCAiJHtjb2RlfSIgPT0gIjIwMCIgfHwg
+IiR7Y29kZX0iID09ICIyMDIiIF1dOyB0aGVuCiAgICAgICAgICAgICAgICAg
+IHJldHVybiAwCiAgICAgICAgICAgICAgICBmaQogICAgICAgICAgICAgIGVs
+c2UKICAgICAgICAgICAgICAgIGVjaG8gImF0dGVtcHQ9JHthdHRlbXB0fSBj
+dXJsX2V4aXQ9JHtjdXJsX3JjfSIKICAgICAgICAgICAgICAgIHNlZCAtbiAn
+MSw0MHAnIC90bXAvY3VybC5lcnIgfHwgdHJ1ZQogICAgICAgICAgICAgIGZp
+CiAgICAgICAgICAgICAgc2xlZXAgMwogICAgICAgICAgICBkb25lCgogICAg
+ICAgICAgICBlY2hvICIke25hbWV9IHB1YmxpYyBlbmRwb2ludCBkaWQgbm90
+IHJldHVybiBhbiBleHBlY3RlZCBsaXZlIEhUVFAgcmVzcG9uc2UiCiAgICAg
+ICAgICAgIGZhaWxlZD0xCiAgICAgICAgICB9CgogICAgICAgICAgcHJvYmUg
+IkJsZW5kZXIgTUNQIiAiJHtCTEVOREVSX01DUF9VUkx9IgogICAgICAgICAg
+cHJvYmUgIktyaXRhIE1DUCIgIiR7S1JJVEFfTUNQX1VSTH0iCgogICAgICAg
+ICAgZXhpdCAiJHtmYWlsZWR9Igo=
