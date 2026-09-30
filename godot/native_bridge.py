@@ -171,6 +171,10 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     normalized = bridge.normalize(args)
     cmd = [str(bridge.GODOT)] + normalized
     env = os.environ.copy()
+    ci_vsync_shim = Path(bridge.ROOT) / ".godot-mcp-vsync-ci.so"
+    if wd.name == ".godot-native-e2e" and ci_vsync_shim.is_file():
+        existing_preload = env.get("LD_PRELOAD", "")
+        env["LD_PRELOAD"] = str(ci_vsync_shim) + (":" + existing_preload if existing_preload else "")
     native_dir = wd / ".godot-mcp-native"
     native_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = native_dir / "stdout.log"
