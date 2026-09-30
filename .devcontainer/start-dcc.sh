@@ -277,7 +277,6 @@ if [[ -z "${BLENDER_PUBLIC_URL}" || -z "${KRITA_PUBLIC_URL}" ]]; then
   exit 1
 fi
 
-fi
 
 STAGE="probe_tunnel"
 echo "== Verify protected public MCP endpoints =="
