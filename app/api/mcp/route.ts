@@ -9,6 +9,8 @@ import {
   registerRemoteMcpTools,
   remoteMcpStatus,
   remoteMcpToolInventory,
+  remoteMcpToolSchema,
+  invokeRemoteMcpTool,
   refreshRemoteMcpCaches,
 } from "../../../lib/remote-mcp";
 
@@ -236,6 +238,32 @@ async function createHandler() {
     );
 
     server.registerTool(
+      "mcp_remote_tool_schema",
+      {
+        title: "Get remote MCP tool schema",
+        description: "Return the live tools/list schema for one remote MCP provider tool.",
+        inputSchema: z.object({
+          providerId: z.string().min(1).max(256),
+          toolName: z.string().min(1).max(256),
+        }),
+      },
+      async (args) => out(await remoteMcpToolSchema(args.providerId, args.toolName)),
+    );
+
+    server.registerTool(
+      "mcp_invoke_remote_tool",
+      {
+        title: "Invoke any remote MCP tool",
+        description: "Universal fallback for invoking any live remote MCP tool discovered from a configured provider.",
+        inputSchema: z.object({
+          providerId: z.string().min(1).max(256),
+          toolName: z.string().min(1).max(256),
+          args: z.record(z.string(), z.unknown()).default({}),
+        }),
+      },
+      async (args) => out(await invokeRemoteMcpTool(args.providerId, args.toolName, args.args)),
+    );
+    server.registerTool(
       "mcp_refresh_all_tools",
       {
         title: "Refresh all MCP tools",
@@ -245,10 +273,37 @@ async function createHandler() {
       },
       async () => {
         refreshRemoteMcpCaches();
+        toolCache = null;
         return out(await remoteMcpToolInventory());
       },
     );
 
+    const blenderAliases = [
+      "blender_status", "blender_list_objects", "blender_new_scene",
+      "blender_add_primitive", "blender_delete_object", "blender_create_basic_scene",
+      "blender_save_blend", "blender_render", "blender_export_glb",
+    ];
+
+    for (const alias of blenderAliases) {
+      server.registerTool(
+        alias,
+        {
+          title: "Blender compatibility: " + alias,
+          description: "Compatibility alias routed through live Blender MCP discovery.",
+          inputSchema: z.record(z.string(), z.unknown()).default({}),
+        },
+        async (args) => {
+          const candidates = [alias, alias.replace(/^blender_/, ""), "blender." + alias.replace(/^blender_/, "")];
+          let lastError: unknown = null;
+          for (const candidate of candidates) {
+            try { return out(await invokeRemoteMcpTool("blender-dcc", candidate, args)); }
+            catch (error) { lastError = error; }
+          }
+          return out({ status: "unavailable", provider: "blender-dcc", requestedTool: alias, error: String(lastError) });
+        },
+      );
+      used.add(alias);
+    }
     for (const tool of inventory) {
       const name = toolName(tool.id, used);
       const description =

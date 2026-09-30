@@ -12,6 +12,7 @@ export type RemoteMcpProvider = {
   url?: string;
   urlEnv?: string;
   urlEnvFallback?: string;
+  urlEnvs?: string[];
   urlSuffix?: string;
   tokenEnv?: string;
   enabled?: boolean;
@@ -153,8 +154,16 @@ async function loadCapabilityMatrix(): Promise<CapabilityMatrix> {
 }
 
 function resolveUrl(provider: RemoteMcpProvider): string | null {
-  const envKeys = [provider.urlEnv, provider.urlEnvFallback].filter(
-    (key): key is string => typeof key === "string" && key.length > 0,
+  const envKeys = Array.from(
+    new Set(
+      [
+        ...(provider.urlEnvs ?? []),
+        provider.urlEnv,
+        provider.urlEnvFallback,
+      ].filter(
+        (key): key is string => typeof key === "string" && key.length > 0,
+      ),
+    ),
   );
 
   let raw: string | null = null;
@@ -309,25 +318,68 @@ export async function discoverRemoteMcpTools(): Promise<RemoteMcpTool[]> {
 }
 
 export async function remoteMcpToolInventory() {
+  const registry = await loadRegistry();
   const entries = await getConnectedProviders();
-  return {
-    providers: entries.map((entry) => ({
-      id: entry.provider.id,
-      name: entry.provider.name,
-      source: entry.provider.source ?? null,
-      toolCount: entry.tools.length,
-      tools: entry.tools.map((tool) => ({
+  const byId = new Map(entries.map((entry) => [entry.provider.id, entry]));
+
+  const providers = registry.providers.map((provider) => {
+    const entry = byId.get(provider.id);
+    const cached = remoteCache.get(provider.id);
+    return {
+      id: provider.id,
+      name: provider.name,
+      source: provider.source ?? null,
+      configured: Boolean(resolveUrl(provider)),
+      connected: Boolean(entry),
+      toolCount: entry?.tools.length ?? 0,
+      tools: entry?.tools.map((tool) => ({
         name: tool.name,
         description: tool.description ?? null,
-      })),
-    })),
-    totalToolCount: entries.reduce(
-      (sum, entry) => sum + entry.tools.length,
-      0,
-    ),
+      })) ?? [],
+      error: cached?.error ?? null,
+    };
+  });
+
+  return {
+    providers,
+    totalConfiguredProviders: registry.providers.length,
+    connectedProviderCount: providers.filter((provider) => provider.connected).length,
+    totalToolCount: providers.reduce((sum, provider) => sum + provider.toolCount, 0),
   };
 }
 
+async function findRemoteTool(providerId: string, toolName: string) {
+  const entries = await getConnectedProviders();
+  const entry = entries.find((candidate) => candidate.provider.id === providerId);
+  if (!entry) {
+    const status = await remoteMcpStatus();
+    const provider = status.providers.find((candidate) => candidate.id === providerId);
+    throw new Error(
+      provider?.error || ("Remote MCP provider " + providerId + " is not connected/configured."),
+    );
+  }
+  const tool = entry.tools.find((candidate) => candidate.name === toolName);
+  if (!tool) {
+    throw new Error(
+      "Remote tool " + toolName + " was not found on provider " + providerId +
+        ". Available tools: " + entry.tools.map((candidate) => candidate.name).join(", "),
+    );
+  }
+  return { entry, tool };
+}
+
+export async function remoteMcpToolSchema(providerId: string, toolName: string) {
+  const { entry, tool } = await findRemoteTool(providerId, toolName);
+  return {
+    provider: { id: entry.provider.id, name: entry.provider.name, source: entry.provider.source ?? null },
+    tool: { name: tool.name, description: tool.description ?? null, inputSchema: tool.inputSchema },
+  };
+}
+
+export async function invokeRemoteMcpTool(providerId: string, toolName: string, args: Record<string, unknown> = {}) {
+  const { entry, tool } = await findRemoteTool(providerId, toolName);
+  return entry.client.callTool({ name: tool.name, arguments: args });
+}
 function uniqueName(base: string, used: Set<string>): string {
   const normalized = ("mcp_" + base.replace(/[^A-Za-z0-9_.-]/g, "_")).slice(
     0,

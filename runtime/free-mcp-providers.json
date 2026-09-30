@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -28,8 +28,6 @@
       "id": "blender-dcc",
       "name": "DCC-MCP Blender",
       "description": "Typed Blender automation over Streamable HTTP. The explicit MCP URL has priority, while the existing Hyouka Blender bridge is a fallback.",
-      "urlEnv": "HYOUKA_BLENDER_MCP_URL",
-      "urlEnvFallback": "BLENDER_BRIDGE_URL",
       "urlSuffix": "/mcp",
       "enabled": true,
       "source": "https://github.com/dcc-mcp/dcc-mcp-blender",
@@ -51,13 +49,17 @@
         "glb-export"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "urlEnvs": [
+        "HYOUKA_BLENDER_MCP_URL",
+        "BLENDER_MCP_URL",
+        "BLENDER_BRIDGE_URL"
+      ]
     },
     {
       "id": "krita",
       "name": "Krita MCP",
       "description": "Krita painting and raster-art automation over a Streamable HTTP MCP wrapper connected to a running Krita plugin.",
-      "urlEnv": "HYOUKA_KRITA_MCP_URL",
       "urlSuffix": "/mcp",
       "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
       "enabled": true,
@@ -72,7 +74,11 @@
         "texture-source-art"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "urlEnvs": [
+        "HYOUKA_KRITA_MCP_URL",
+        "KRITA_MCP_URL"
+      ]
     },
     {
       "id": "godot-full-control-157",
