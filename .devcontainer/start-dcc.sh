@@ -248,50 +248,35 @@ sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
 BLENDER_PUBLIC_URL=""
 KRITA_PUBLIC_URL=""
-PUBLIC_PORTS_OK=0
 
-STAGE="configure_public_ports"
-echo "== Configure public GitHub Codespaces DCC ports =="
-if command -v gh >/dev/null 2>&1 && gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
-  if gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" >/tmp/hyouka-codespace-ports.log 2>&1; then
-    BLENDER_PUBLIC_URL="https://${CODESPACE_NAME}-9765.app.github.dev/blender/mcp"
-    KRITA_PUBLIC_URL="https://${CODESPACE_NAME}-9797.app.github.dev/krita/mcp"
-    PUBLIC_PORTS_OK=1
-    echo "Public GitHub Codespaces ports configured."
-  else
-    echo "Public GitHub Codespaces ports unavailable; using Cloudflare fallback."
-    cat /tmp/hyouka-codespace-ports.log 2>/dev/null || true
+STAGE="start_cloudflared"
+echo "== Start Cloudflare Quick Tunnel =="
+rm -f /tmp/hyouka-cloudflared.log
+nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9888 >/tmp/hyouka-cloudflared.log 2>&1 &
+CLOUDFLARED_PID=$!
+echo "cloudflared pid=${CLOUDFLARED_PID}"
+TUNNEL_URL=""
+for attempt in $(seq 1 60); do
+  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\\.trycloudflare\\.com' /tmp/hyouka-cloudflared.log | sed -n '1p' || true)"
+  if [[ -n "${TUNNEL_URL}" ]]; then break; fi
+  if ! kill -0 "${CLOUDFLARED_PID}" 2>/dev/null; then
+    echo "cloudflared exited before publishing a tunnel URL."
+    sed -n "1,220p" /tmp/hyouka-cloudflared.log || true
+    break
   fi
-fi
-
-if [[ "${PUBLIC_PORTS_OK}" -eq 0 ]]; then
-  STAGE="start_cloudflared"
-  echo "== Start Cloudflare Quick Tunnel =="
-  rm -f /tmp/hyouka-cloudflared.log
-  nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9888 >/tmp/hyouka-cloudflared.log 2>&1 &
-  CLOUDFLARED_PID=$!
-  echo "cloudflared pid=${CLOUDFLARED_PID}"
-  TUNNEL_URL=""
-  for attempt in $(seq 1 60); do
-    TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -1 || true)"
-    if [[ -n "${TUNNEL_URL}" ]]; then break; fi
-    if ! kill -0 "${CLOUDFLARED_PID}" 2>/dev/null; then
-      echo "cloudflared exited before publishing a tunnel URL."
-      sed -n "1,220p" /tmp/hyouka-cloudflared.log || true
-      break
-    fi
-    sleep 2
-  done
-  if [[ -n "${TUNNEL_URL}" ]]; then
-    BLENDER_PUBLIC_URL="${TUNNEL_URL}/blender/mcp"
-    KRITA_PUBLIC_URL="${TUNNEL_URL}/krita/mcp"
-    echo "Cloudflare tunnel: ${TUNNEL_URL}"
-  fi
+  sleep 2
+done
+if [[ -n "${TUNNEL_URL}" ]]; then
+  BLENDER_PUBLIC_URL="${TUNNEL_URL}/blender/mcp"
+  KRITA_PUBLIC_URL="${TUNNEL_URL}/krita/mcp"
+  echo "Cloudflare tunnel: ${TUNNEL_URL}"
 fi
 
 if [[ -z "${BLENDER_PUBLIC_URL}" || -z "${KRITA_PUBLIC_URL}" ]]; then
-  echo "No public DCC endpoints were established."
+  echo "Cloudflare public DCC tunnel was not established."
   exit 1
+fi
+
 fi
 
 STAGE="probe_tunnel"
