@@ -18,7 +18,7 @@ sudo apt-get install -y --no-install-recommends \
   xvfb xauth x11-utils
 
 echo "== Verify GitHub CLI =="
-gh --version | head -n 1
+gh --version | sed -n '1p'
 
 echo "== Install cloudflared =="
 CLOUDFLARED_VERSION="${CLOUDFLARED_VERSION:-2026.9.3}"
@@ -57,7 +57,7 @@ if [[ ! -x "${BLENDER_DIR}/blender" ]]; then
 fi
 
 sudo ln -sfn "${BLENDER_DIR}/blender" /usr/local/bin/blender
-blender --version | head -n 2
+blender --version | sed -n '1,2p'
 
 echo "== Install dcc-mcp-blender =="
 sudo rm -rf "${DCC_SITE}"
@@ -87,7 +87,7 @@ EOF
   sudo chmod +x /usr/local/bin/krita
 fi
 
-krita --version | head -n 2
+krita --version | sed -n '1,2p'
 
 echo "== Install Krita MCP =="
 sudo rm -rf "${KRITA_DIR}"
@@ -106,7 +106,7 @@ KRITA_PYK="/home/vscode/.local/share/krita/pykrita"
 mkdir -p "${KRITA_PYK}"
 cp -a "${KRITA_DIR}/krita-plugin/." "${KRITA_PYK}/"
 
-DESKTOP_FILE="$(find "${KRITA_PYK}" -maxdepth 1 -type f -name '*.desktop' | head -n 1)"
+DESKTOP_FILE="$(find "${KRITA_PYK}" -maxdepth 1 -type f -name '*.desktop' -print -quit)"
 test -n "$DESKTOP_FILE"
 MODULE_NAME="$(awk -F= '/^X-KDE-Library=/{print $2; exit}' "$DESKTOP_FILE")"
 test -n "$MODULE_NAME"
