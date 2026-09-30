@@ -10,3 +10,5 @@ export async function GET() {
     },
   });
 }
+
+// Refresh production after DCC credential rotation.
