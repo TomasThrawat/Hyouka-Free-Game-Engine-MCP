@@ -1,9 +1,9 @@
 {
   "status": "ok",
   "engine": "Godot",
-  "url": "https://leather-interact-duo-shipments.trycloudflare.com",
+  "url": "https://condition-amber-format-hose.trycloudflare.com",
   "runtime": "Godot 4.7.2-stable .NET Linux x86_64",
   "source": "https://github.com/godotengine/godot",
-  "durationMinutes": "2",
-  "ownerRunId": "36721088384"
+  "durationMinutes": "300",
+  "ownerRunId": "36721467777"
 }
