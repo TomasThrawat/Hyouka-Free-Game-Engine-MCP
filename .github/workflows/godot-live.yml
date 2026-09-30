@@ -25,6 +25,11 @@ on:
         required: false
         default: "240"
         type: string
+      verification_only:
+        description: "Run CI verification without starting a long-lived successor handoff"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: write
@@ -52,7 +57,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl unzip python3 jq xvfb
+          sudo apt-get install -y curl unzip python3 jq xvfb weston
 
       - name: Install Godot 4.7.2 .NET
         run: |
@@ -183,7 +188,6 @@ jobs:
           [display]
           window/size/viewport_width=320
           window/size/viewport_height=200
-          window/vsync/vsync_mode=0
           [rendering]
           renderer/rendering_method="gl_compatibility"
           renderer/rendering_method.mobile="gl_compatibility"
@@ -216,8 +220,28 @@ jobs:
                   file.store_string("clicked")
                   file.close()
           EOF
-          export DISPLAY=:99
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          export WAYLAND_DISPLAY=godot-e2e
+          weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 >/tmp/weston-godot-e2e.log 2>&1 &
+          WESTON_PID=$!
+          trap 'kill "$WESTON_PID" 2>/dev/null || true' EXIT
+          WAYLAND_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          WAYLAND_READY=0
+          for i in $(seq 1 30); do
+            if test -S "$WAYLAND_SOCKET"; then
+              WAYLAND_READY=1
+              break
+            fi
+            if ! kill -0 "$WESTON_PID" 2>/dev/null; then
+              cat /tmp/weston-godot-e2e.log
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$WAYLAND_READY" -eq 1
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","wayland","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           PID=$(jq -r '.pid' <<<"$START")
@@ -271,8 +295,13 @@ jobs:
           RUN_EVENT: ${{ github.event_name }}
           INPUT_MINUTES: ${{ inputs.duration_minutes }}
           INPUT_HANDOFF: ${{ inputs.handoff_after_minutes }}
+          VERIFICATION_ONLY: ${{ inputs.verification_only }}
         run: |
           set -e
+          if [ "$VERIFICATION_ONLY" = "true" ]; then
+            echo "Verification-only run: long-lived handoff skipped."
+            exit 0
+          fi
           if [ "$RUN_EVENT" = "push" ]; then
             HANDOFF_MINUTES=240
             NEXT_MINUTES=300
