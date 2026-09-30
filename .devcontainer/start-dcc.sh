@@ -38,9 +38,6 @@ if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
   fi
 fi
 gh auth status
-  echo "GitHub CLI authentication is unavailable for this Codespace."
-  cat /tmp/hyouka-gh-auth.log || true
-  exit 1
 fi
 gh auth status
 
