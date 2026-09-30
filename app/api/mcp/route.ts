@@ -8,6 +8,8 @@ import {
   gameCapabilityAudit,
   registerRemoteMcpTools,
   remoteMcpStatus,
+  remoteMcpToolInventory,
+  refreshRemoteMcpCaches,
 } from "../../../lib/remote-mcp";
 
 const CONFIG =
@@ -220,6 +222,31 @@ async function createHandler() {
         inputSchema: z.object({}),
       },
       async () => out(await gameCapabilityAudit()),
+    );
+
+    server.registerTool(
+      "mcp_discover_all_tools",
+      {
+        title: "Discover all remote MCP tools",
+        description:
+          "Connect to every configured remote MCP provider and return the complete live tools/list inventory without a fixed provider cap.",
+        inputSchema: z.object({}),
+      },
+      async () => out(await remoteMcpToolInventory()),
+    );
+
+    server.registerTool(
+      "mcp_refresh_all_tools",
+      {
+        title: "Refresh all MCP tools",
+        description:
+          "Clear provider and registry caches, reconnect every configured remote MCP provider, and return the refreshed live inventory.",
+        inputSchema: z.object({}),
+      },
+      async () => {
+        refreshRemoteMcpCaches();
+        return out(await remoteMcpToolInventory());
+      },
     );
 
     for (const tool of inventory) {
