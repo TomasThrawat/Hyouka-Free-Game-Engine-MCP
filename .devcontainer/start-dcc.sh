@@ -5,38 +5,108 @@ BLENDER_BIN="/usr/local/bin/blender"
 DCC_SITE="/opt/dcc-mcp-python"
 KRITA_VENV="/opt/krita-mcp-venv"
 ROOT="/workspaces/Hyouka-Free-Game-Engine-MCP"
+MANIFEST_API="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/runtime/dcc-live.json"
+STAGE="init"
+
+publish_runtime_failure() {
+  local stage="$1"
+  local rc="$2"
+  local current current_sha content payload
+  set +e
+  current="$(curl -fsS \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "${MANIFEST_API}?ref=main" 2>/dev/null || true)"
+  current_sha="$(printf '%s' "${current}" | jq -r '.sha // empty' 2>/dev/null || true)'
+  cat > /tmp/dcc-live.json <<EOF
+{
+  "version": "1.0.0",
+  "status": "error",
+  "runtime": "github-codespaces-cloudflare-quick-tunnel",
+  "updatedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "error": "runtime_failed",
+  "stage": "${stage}",
+  "exitCode": ${rc},
+  "providers": {
+    "blender-dcc": {"status": "offline", "url": null},
+    "krita": {"status": "offline", "url": null}
+  }
+}
+EOF
+  content="$(base64 -w0 /tmp/dcc-live.json 2>/dev/null || true)"
+  if [[ -n "${current_sha}" ]]; then
+    payload="$(jq -n \
+      --arg message "chore: publish DCC runtime failure status [skip ci]" \
+      --arg content "${content}" \
+      --arg sha "${current_sha}" \
+      '{message:$message,content:$content,sha:$sha,branch:"main"}' 2>/dev/null || true)"
+  else
+    payload="$(jq -n \
+      --arg message "chore: publish DCC runtime failure status [skip ci]" \
+      --arg content "${content}" \
+      '{message:$message,content:$content,branch:"main"}' 2>/dev/null || true)"
+  fi
+  if [[ -n "${payload}" ]]; then
+    curl -fsS -X PUT \
+      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      -H "Content-Type: application/json" \
+      --data "${payload}" \
+      "${MANIFEST_API}" >/tmp/dcc-live-failure-publish.json 2>&1 || true
+  fi
+}
+
+on_runtime_error() {
+  local rc=$?
+  local failed_stage="${STAGE}"
+  trap - ERR
+  set +e
+  echo "DCC runtime failed at stage=${failed_stage} exit=${rc}."
+  publish_runtime_failure "${failed_stage}" "${rc}"
+  exit "${rc}"
+}
+trap on_runtime_error ERR
+
 
 : "${HYOUKA_DCC_MCP_TOKEN:?HYOUKA_DCC_MCP_TOKEN must be available as a Codespaces secret}"
 : "${CODESPACE_NAME:?CODESPACE_NAME must be available inside the Codespace}"
 : "${GITHUB_TOKEN:?GITHUB_TOKEN must be available inside the Codespace}"
 
+STAGE="stop_previous_processes"
 echo "== Stop previous DCC processes =="
 for pattern in "blender_bootstrap.py" "krita_mcp_http.py" "Xvfb :99"; do
   pkill -f "${pattern}" 2>/dev/null || true
 done
 sudo nginx -s stop 2>/dev/null || true
 
+STAGE="verify_github_token"
 echo "== Verify Codespaces GitHub token =="
 case "${GITHUB_TOKEN}" in
   "") echo "GITHUB_TOKEN is empty." >&2; exit 1 ;;
   *) echo "GITHUB_TOKEN is available for runtime manifest publishing." ;;
 esac
+STAGE="start_xvfb"
 echo "== Start Xvfb for headless Krita =="
 if ! pgrep -f "Xvfb :99" >/dev/null 2>&1; then
   nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/tmp/hyouka-xvfb.log 2>&1 &
 fi
 export DISPLAY=:99
 
+STAGE="start_blender"
 echo "== Start headless Blender MCP =="
 if ! pgrep -f "blender.*blender_bootstrap.py" >/dev/null 2>&1; then
   nohup env PYTHONPATH="${DCC_SITE}" "${BLENDER_BIN}" --background --python "${ROOT}/.devcontainer/blender_bootstrap.py" >/tmp/hyouka-blender-mcp.log 2>&1 &
 fi
 
+STAGE="start_krita"
 echo "== Start Krita =="
 if ! pgrep -x "krita" >/dev/null 2>&1; then
   nohup krita --nosplash >/tmp/hyouka-krita.log 2>&1 &
 fi
 
+STAGE="wait_krita_plugin"
 echo "== Wait for Krita plugin =="
 KRITA_READY=0
 for i in $(seq 1 120); do
@@ -56,11 +126,13 @@ fi
 echo "Krita plugin health passed:"
 cat /tmp/krita-health.json
 
+STAGE="start_krita_mcp"
 echo "== Start Krita Streamable HTTP MCP =="
 if ! pgrep -f "krita_mcp_http.py" >/dev/null 2>&1; then
   nohup env KRITA_URL="http://127.0.0.1:5678" "${KRITA_VENV}/bin/python" "${ROOT}/.devcontainer/krita_mcp_http.py" >/tmp/hyouka-krita-mcp.log 2>&1 &
 fi
 
+STAGE="wait_internal_mcp"
 echo "== Wait for MCP processes =="
 BLENDER_READY=0
 for i in $(seq 1 90); do
@@ -92,6 +164,7 @@ if [[ "${KRITA_MCP_READY}" -ne 1 ]]; then
   exit 1
 fi
 
+STAGE="configure_nginx"
 echo "== Configure protected reverse proxy =="
 sudo tee /tmp/hyouka-dcc-nginx.conf >/dev/null <<EOF
 worker_processes 1;
@@ -170,6 +243,7 @@ EOF
 sudo nginx -t -c /tmp/hyouka-dcc-nginx.conf
 sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
+STAGE="start_cloudflared"
 echo "== Start Cloudflare Quick Tunnel =="
 rm -f /tmp/hyouka-cloudflared.log
 nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9888 >/tmp/hyouka-cloudflared.log 2>&1 &
@@ -198,6 +272,7 @@ fi
 
 echo "Cloudflare tunnel: $TUNNEL_URL"
 
+STAGE="probe_tunnel"
 echo "== Verify protected tunneled MCP endpoints =="
 for path in "/blender/mcp" "/krita/mcp"; do
   CODE="$(curl -sS -o /tmp/hyouka-tunnel-probe.json -w '%{http_code}' \
@@ -216,6 +291,7 @@ for path in "/blender/mcp" "/krita/mcp"; do
   esac
 done
 
+STAGE="publish_manifest"
 echo "== Publish live DCC runtime manifest =="
 cat >/tmp/dcc-live.json <<EOF
 {
