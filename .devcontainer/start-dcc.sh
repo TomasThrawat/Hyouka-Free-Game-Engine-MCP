@@ -21,17 +21,23 @@ command -v gh >/dev/null 2>&1 || {
   exit 1
 }
 
-# Use the native GitHub CLI authentication available to the Codespace.
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  export GH_TOKEN="${GITHUB_TOKEN}"
-fi
-
-if [[ -z "${GH_TOKEN:-}" ]]; then
-  echo "Neither GH_TOKEN nor GITHUB_TOKEN is available in this Codespace."
-  exit 1
-fi
-
+# Prefer the credential already authenticated in gh.
+# Only fall back to the Codespaces GITHUB_TOKEN when gh has no stored login.
 if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    export GH_TOKEN="${GITHUB_TOKEN}"
+    if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
+      echo "GitHub CLI authentication is unavailable for this Codespace."
+      cat /tmp/hyouka-gh-auth.log || true
+      exit 1
+    fi
+  else
+    echo "GitHub CLI authentication is unavailable for this Codespace."
+    cat /tmp/hyouka-gh-auth.log || true
+    exit 1
+  fi
+fi
+gh auth status
   echo "GitHub CLI authentication is unavailable for this Codespace."
   cat /tmp/hyouka-gh-auth.log || true
   exit 1
