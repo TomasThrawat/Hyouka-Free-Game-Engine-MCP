@@ -8,7 +8,6 @@ KRITA_VENV="/opt/krita-mcp-venv"
 ROOT="/workspaces/Hyouka-Free-Game-Engine-MCP"
 
 : "${HYOUKA_DCC_MCP_TOKEN:?HYOUKA_DCC_MCP_TOKEN must be available as a Codespaces secret}"
-: "${GITHUB_TOKEN:?GITHUB_TOKEN must be available inside the Codespace}"
 : "${CODESPACE_NAME:?CODESPACE_NAME must be available inside the Codespace}"
 
 echo "== Stop previous DCC processes =="
