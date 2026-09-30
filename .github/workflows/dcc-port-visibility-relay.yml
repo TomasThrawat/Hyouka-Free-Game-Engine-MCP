@@ -1,0 +1,49 @@
+name: DCC Port Visibility Relay
+
+on:
+  workflow_dispatch:
+    inputs:
+      codespace_name:
+        description: Codespace that owns the DCC ports
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  expose:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.HYOUKA_DCC_CODESPACE_GH_TOKEN }}
+      CODESPACE_NAME: ${{ inputs.codespace_name }}
+    steps:
+      - name: Make DCC ports public
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh codespace ports visibility 9765:public 9797:public -c "$CODESPACE_NAME"
+
+      - name: Verify DCC port visibility
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ports_json="$(gh codespace ports -c "$CODESPACE_NAME" --json sourcePort,visibility,browseUrl)"
+          python3 -c '
+          import json, sys
+          ports = json.loads(sys.argv[1])
+          expected = {9765, 9797}
+          actual = {
+              int(item["sourcePort"]): item["visibility"]
+              for item in ports
+              if int(item["sourcePort"]) in expected
+          }
+          missing = expected - set(actual)
+          bad = {port: value for port, value in actual.items() if value != "public"}
+          if missing or bad:
+              raise SystemExit(
+                  f"Public port verification failed: missing={sorted(missing)}, bad={bad}"
+              )
+          for port in sorted(expected):
+              print(f"{port}: {actual[port]}")
+          ' "$ports_json"
