@@ -58,3 +58,5 @@ jobs:
           print("connectedToolCount=", data.get("connectedToolCount"))
           print("DCC runtime smoke passed")
           PY
+
+# Force a Git-integrated production redeploy after the DCC credential rotation.
