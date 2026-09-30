@@ -1,4 +1,4 @@
-import { createDccHttpMcpHandler } from "@/lib/dcc-http-mcp";
+import { createDccHttpMcpHandler } from "../../../../lib/dcc-http-mcp";
 
 export const dynamic = "force-dynamic";
 
@@ -9,4 +9,6 @@ async function handle(request: Request) {
   return handler(request);
 }
 
-export { handle as GET, handle as POST, handle as DELETE };
+export const GET = handle;
+export const POST = handle;
+export const DELETE = handle;

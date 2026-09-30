@@ -4,7 +4,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const handler = createDccHttpMcpHandler("krita");
+const handlerPromise = createDccHttpMcpHandler("krita");
 
-export const GET = handler;
-export const POST = handler;
+async function handle(request: Request) {
+  const handler = await handlerPromise;
+  return handler(request);
+}
+
+export const GET = handle;
+export const POST = handle;
