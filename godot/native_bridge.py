@@ -150,9 +150,7 @@ def wait_native_channel(pid, port, timeout=20):
             return False
         try:
             with urlopen(Request(url), timeout=1) as response:
-                if int(response.status) != 200:
-                    pass
-                else:
+                if int(response.status) == 200:
                     payload = json.loads(response.read())
                     if payload.get("status") == "ok":
                         return True
@@ -194,11 +192,17 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     bridge.PROCS[p.pid] = (p, __import__("time").time(), cmd, str(wd))
     NATIVE_PROCS[p.pid] = {"port": port, "project": str(wd)}
     save_session(wd, p.pid, port)
+
     if not wait_native_channel(p.pid, port, min(max(int(timeout), 1), 20)):
-        stdout, stderr = read_logs({"pid":p.pid, "project":str(wd), "stdoutLog":str(stdout_path), "stderrLog":str(stderr_path)})
+        stdout, stderr = read_logs({
+            "pid": p.pid,
+            "project": str(wd),
+            "stdoutLog": str(stdout_path),
+            "stderrLog": str(stderr_path),
+        })
         try:
             if p.poll() is None:
-                os.killpg(p.pid, signal.SIGTERM)
+                os.killpg(p.pid, bridge.signal.SIGTERM)
         except OSError:
             pass
         bridge.PROCS.pop(p.pid, None)
@@ -212,16 +216,17 @@ def native_run(args, cwd=None, timeout=120, bg=False):
                     pass
         cleanup_native(wd)
         return {
-            "status":"error",
-            "engine":"Godot",
-            "message":"native state channel did not become ready before timeout",
-            "pid":p.pid,
-            "returnCode":p.poll(),
-            "stdout":stdout,
-            "stderr":stderr,
-            "command":cmd,
-            "cwd":str(wd),
+            "status": "error",
+            "engine": "Godot",
+            "message": "native state channel did not become ready before timeout",
+            "pid": p.pid,
+            "returnCode": p.poll(),
+            "stdout": stdout,
+            "stderr": stderr,
+            "command": cmd,
+            "cwd": str(wd),
         }
+
     return {"status":"started","pid":p.pid,"command":cmd,"cwd":str(wd),"nativeGodotControl":True,"port":port}
 
 def native_start_project(args, cwd=None, timeout=120):
