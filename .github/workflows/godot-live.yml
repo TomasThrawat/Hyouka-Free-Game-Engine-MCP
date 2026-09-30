@@ -101,7 +101,7 @@ jobs:
           chmod 700 "$XDG_RUNTIME_DIR"
           export XDG_SESSION_TYPE=wayland
           export WAYLAND_DISPLAY=godot-e2e
-          export WESTON_VERSION=16.0.0
+          export WESTON_VERSION=15.0.1
           export WESTON_SRC_DIR="$RUNNER_TEMP/weston-$WESTON_VERSION"
           export WESTON_PREFIX="$RUNNER_TEMP/weston-prefix"
           if test ! -x "$WESTON_PREFIX/bin/weston"; then
