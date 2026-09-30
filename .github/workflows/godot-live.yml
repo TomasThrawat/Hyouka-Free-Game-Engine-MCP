@@ -57,7 +57,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           timeout 300s sudo apt-get update -o Acquire::Retries=3
-          timeout 900s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq weston xwayland libgl1-mesa-dri mesa-utils
+          timeout 900s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq weston xwayland libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 mesa-utils
 
       - name: Install Godot 4.7.2 .NET
         run: |
@@ -224,8 +224,9 @@ jobs:
           window/size/viewport_height=200
           window/vsync/vsync_mode=0
           [rendering]
-          renderer/rendering_method="gl_compatibility"
-          renderer/rendering_method.mobile="gl_compatibility"
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="forward_plus"
+          rendering_device/driver="vulkan"
           EOF
 
           cat > "$TEST_ROOT/Main.tscn" <<'EOF'
@@ -261,7 +262,7 @@ jobs:
           DISPLAY_SOCKET="$(find /tmp/.X11-unix -maxdepth 1 -type s -name 'X*' -print -quit)"
           test -n "$DISPLAY_SOCKET"
           export DISPLAY=":$(printf "%s" "$DISPLAY_SOCKET" | sed 's#.*/X##')"
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--rendering-driver","opengl3_es","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--rendering-method","forward_plus","--rendering-driver","vulkan","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           test "$(jq -r '.status' <<<"$START")" = "started"
