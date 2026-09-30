@@ -57,7 +57,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           timeout 300s sudo apt-get update -o Acquire::Retries=3
-          timeout 900s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq xserver-xorg-core xserver-xorg-video-dummy libgl1-mesa-dri mesa-utils
+          timeout 900s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq weston xwayland libgl1-mesa-dri mesa-utils
 
       - name: Install Godot 4.7.2 .NET
         run: |
@@ -89,63 +89,40 @@ jobs:
       - name: Start Godot bridge
         run: |
           set -e
-          cat > /tmp/godot-dummy-xorg.conf <<'EOF'
-          Section "Device"
-              Identifier "DummyVideoCard"
-              Driver "dummy"
-              VideoRam 256000
-          EndSection
-          Section "Monitor"
-              Identifier "DummyMonitor"
-              HorizSync 28.0-80.0
-              VertRefresh 48.0-75.0
-              Modeline "1280x720" 74.50 1280 1344 1472 1664 720 725 730 746 +HSync +VSync
-          EndSection
-          Section "Screen"
-              Identifier "DummyScreen"
-              Device "DummyVideoCard"
-              Monitor "DummyMonitor"
-              DefaultDepth 24
-              SubSection "Display"
-                  Depth 24
-                  Modes "1280x720"
-              EndSubSection
-          EndSection
-          Section "ServerLayout"
-              Identifier "DummyLayout"
-              Screen "DummyScreen"
-          EndSection
-          EOF
-          sudo env LIBGL_ALWAYS_SOFTWARE=1 Xorg :99 -config /tmp/godot-dummy-xorg.conf -noreset -nolisten tcp -ac +extension GLX +extension RANDR +extension RENDER -logfile /tmp/xorg-godot.log >/tmp/xorg-launch.log 2>&1 &
-          XORG_PID=$!
-          export DISPLAY=:99
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/godot-wayland-runtime"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          export XDG_SESSION_TYPE=wayland
+          export WAYLAND_DISPLAY=godot-e2e
+          find /tmp/.X11-unix -maxdepth 1 -type s -name 'X*' -printf '%f\n' 2>/dev/null | sort > /tmp/x11-before.txt || true
+          nohup weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --xwayland --idle-time=0 >/tmp/weston-godot-e2e.log 2>&1 &
+          WESTON_PID=$!
           for i in $(seq 1 30); do
-            if test -S /tmp/.X11-unix/X99; then break; fi
-            if ! kill -0 "$XORG_PID" 2>/dev/null; then
-              cat /tmp/xorg-launch.log || true
-              cat /tmp/xorg-godot.log || true
-              exit 1
-            fi
+            if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+            if ! kill -0 "$WESTON_PID" 2>/dev/null; then cat /tmp/weston-godot-e2e.log; exit 1; fi
             sleep 1
           done
-          if ! test -S /tmp/.X11-unix/X99; then
-            cat /tmp/xorg-launch.log || true
-            cat /tmp/xorg-godot.log || true
-            exit 1
-          fi
-          export DISPLAY=:99
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          DISPLAY_NUMBER=""
           for i in $(seq 1 30); do
-            if test -S /tmp/.X11-unix/X99; then break; fi
-            if ! pgrep -x Xorg >/dev/null 2>&1; then cat /tmp/xorg-godot.log; exit 1; fi
+            for socket in /tmp/.X11-unix/X*; do
+              test -S "$socket" || continue
+              name="$(basename "$socket")"
+              if ! grep -qxF "$name" /tmp/x11-before.txt 2>/dev/null; then
+                DISPLAY_NUMBER="$(printf "%s" "$name" | cut -c2-)"
+                break
+              fi
+            done
+            test -n "$DISPLAY_NUMBER" && break
             sleep 1
           done
-          test -S /tmp/.X11-unix/X99
-          GLXINFO=$(LIBGL_ALWAYS_SOFTWARE=1 glxinfo -B 2>&1)
-          echo "$GLXINFO"
-          grep -Eq 'OpenGL renderer string:.*llvmpipe|OpenGL renderer string:.*Mesa' <<<"$GLXINFO"
-          EXTENSIONS=$(LIBGL_ALWAYS_SOFTWARE=1 glxinfo -l 2>&1)
-          grep -Eq 'GLX_(MESA|SGI|EXT)_swap_control' <<<"$EXTENSIONS"
-          nohup env DISPLAY="$DISPLAY" XDG_RUNTIME_DIR="" WAYLAND_DISPLAY="" LIBGL_ALWAYS_SOFTWARE=1 GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE" GODOT_BRIDGE_HOST="127.0.0.1" python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
+          test -n "$DISPLAY_NUMBER"
+          export DISPLAY=":$DISPLAY_NUMBER"
+          unset WAYLAND_DISPLAY
+          X11_INFO="$(LIBGL_ALWAYS_SOFTWARE=1 glxinfo -B 2>&1)"
+          echo "$X11_INFO"
+          grep -Eq "OpenGL renderer string:.*llvmpipe|OpenGL renderer string:.*Mesa" <<<"$X11_INFO"
+          nohup env DISPLAY="$DISPLAY" XDG_RUNTIME_DIR="" WAYLAND_DISPLAY="" XDG_SESSION_TYPE=x11 LIBGL_ALWAYS_SOFTWARE=1 GODOT_BIN="$GODOT_BIN" GODOT_WORKSPACE_ROOT="$GITHUB_WORKSPACE" GODOT_BRIDGE_HOST="127.0.0.1" python3 godot/native_bridge.py >/tmp/godot-bridge.log 2>&1 &
           READY=0
           for i in $(seq 1 45); do
             if curl -fsS --max-time 5 http://127.0.0.1:9765/health >/dev/null 2>&1; then READY=1; break; fi
@@ -281,8 +258,9 @@ jobs:
                   file.close()
           EOF
 
-          export DISPLAY=:99
-          test -S /tmp/.X11-unix/X99
+          DISPLAY_SOCKET="$(find /tmp/.X11-unix -maxdepth 1 -type s -name 'X*' -print -quit)"
+          test -n "$DISPLAY_SOCKET"
+          export DISPLAY=":$(printf "%s" "$DISPLAY_SOCKET" | sed 's#.*/X##')"
           RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
