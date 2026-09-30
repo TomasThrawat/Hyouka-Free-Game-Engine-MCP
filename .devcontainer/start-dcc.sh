@@ -73,6 +73,15 @@ on_runtime_exit() {
 trap on_runtime_exit EXIT
 
 
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    export GITHUB_TOKEN="$GH_TOKEN"
+  elif command -v gh >/dev/null 2>&1; then
+    GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+    export GITHUB_TOKEN
+  fi
+fi
+
 : "${HYOUKA_DCC_MCP_TOKEN:?HYOUKA_DCC_MCP_TOKEN must be available as a Codespaces secret}"
 : "${CODESPACE_NAME:?CODESPACE_NAME must be available inside the Codespace}"
 : "${GITHUB_TOKEN:?GITHUB_TOKEN must be available inside the Codespace}"

@@ -9,6 +9,17 @@ KRITA_DIR="/opt/krita-mcp"
 
 export DEBIAN_FRONTEND=noninteractive
 
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    export GITHUB_TOKEN="$GH_TOKEN"
+  elif command -v gh >/dev/null 2>&1; then
+    GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+    export GITHUB_TOKEN
+  fi
+fi
+
+: "${GITHUB_TOKEN:?GITHUB_TOKEN must be available from GH_TOKEN or gh auth token}"
+
 echo "== Install OS dependencies =="
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
