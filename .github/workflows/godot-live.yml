@@ -57,7 +57,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl unzip python3 jq xvfb weston
+          sudo apt-get install -y curl unzip python3 jq xvfb weston labwc libdecor-0-0 libdecor-0-plugin-1-cairo
 
       - name: Install Godot 4.7.2 .NET
         run: |
@@ -100,11 +100,15 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
           export WAYLAND_DISPLAY=godot-e2e
-          weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 >/tmp/weston-godot-e2e.log 2>&1 &
-          WESTON_PID=$!
+          export WLR_BACKENDS=headless
+          export WLR_LIBINPUT_NO_DEVICES=1
+          export LIBSEAT_BACKEND=noop
+          export LABWC_FALLBACK_OUTPUT=HEADLESS-1
+          labwc >/tmp/labwc-godot-e2e.log 2>&1 &
+          LABWC_PID=$!
           for i in $(seq 1 30); do
             if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
-            if ! kill -0 "$WESTON_PID" 2>/dev/null; then cat /tmp/weston-godot-e2e.log; exit 1; fi
+            if ! kill -0 "$LABWC_PID" 2>/dev/null; then cat /tmp/labwc-godot-e2e.log; exit 1; fi
             sleep 1
           done
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
