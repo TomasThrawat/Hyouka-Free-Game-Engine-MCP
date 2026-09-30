@@ -1,0 +1,29 @@
+name: DCC Bootstrap Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run DCC installer in the Codespaces base image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker pull mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+          docker run --rm \
+            --env BLENDER_VERSION=5.2.2 \
+            --env HOME=/home/vscode \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            mcr.microsoft.com/devcontainers/base:ubuntu-24.04 \
+            bash /workspace/.devcontainer/install-dcc.sh
+
+      - name: Validate installed DCC entrypoints
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "DCC bootstrap smoke completed inside the official devcontainer base image."
