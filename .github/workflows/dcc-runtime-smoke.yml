@@ -1,34 +1,60 @@
-bmFtZTogRENDIFJ1bnRpbWUgU21va2UKCm9uOgogIHdvcmtmbG93X2Rpc3Bh
-dGNoOgoKam9iczoKICBzbW9rZToKICAgIHJ1bnMtb246IHVidW50dS0yNC4w
-NAogICAgZW52OgogICAgICBCTEVOREVSX01DUF9VUkw6IGh0dHBzOi8vaHlv
-dWthLWRjYy1tY3AtcnVudGltZS1maXhlZC1wajl3NDVwcTQ3NGdoN2c1dy05
-NzY1LmFwcC5naXRodWIuZGV2L21jcAogICAgICBLUklUQV9NQ1BfVVJMOiBo
-dHRwczovL2h5b3VrYS1kY2MtbWNwLXJ1bnRpbWUtZml4ZWQtcGo5dzQ1cHE0
-NzRnaDdnNXctOTc5Ny5hcHAuZ2l0aHViLmRldi9tY3AKICAgIHN0ZXBzOgog
-ICAgICAtIG5hbWU6IFByb2JlIHB1YmxpYyBEQ0MgZW5kcG9pbnRzCiAgICAg
-ICAgc2hlbGw6IGJhc2gKICAgICAgICBydW46IHwKICAgICAgICAgIHNldCAt
-dQogICAgICAgICAgZmFpbGVkPTAKCiAgICAgICAgICBwcm9iZSgpIHsKICAg
-ICAgICAgICAgbG9jYWwgbmFtZT0iJDEiCiAgICAgICAgICAgIGxvY2FsIHVy
-bD0iJDIiCiAgICAgICAgICAgIGxvY2FsIGNvZGU9IiIKICAgICAgICAgICAg
-bG9jYWwgY3VybF9yYz0wCgogICAgICAgICAgICBlY2hvICI9PSAke25hbWV9
-ID09IgogICAgICAgICAgICBmb3IgYXR0ZW1wdCBpbiAxIDIgMyA0IDU7IGRv
-CiAgICAgICAgICAgICAgY29kZT0iJChjdXJsIC1zUyAtbyAvZGV2L251bGwg
-LXcgJyV7aHR0cF9jb2RlfScgLS1jb25uZWN0LXRpbWVvdXQgNSAtLW1heC10
-aW1lIDE1ICIkdXJsIiAyPi90bXAvY3VybC5lcnIpIgogICAgICAgICAgICAg
-IGN1cmxfcmM9JD8KICAgICAgICAgICAgICBpZiBbWyAiJHtjdXJsX3JjfSIg
-LWVxIDAgXV07IHRoZW4KICAgICAgICAgICAgICAgIGVjaG8gImF0dGVtcHQ9
-JHthdHRlbXB0fSBodHRwPSR7Y29kZX0iCiAgICAgICAgICAgICAgICBpZiBb
-WyAiJHtjb2RlfSIgPT0gIjQwMSIgfHwgIiR7Y29kZX0iID09ICI0MDUiIHx8
-ICIke2NvZGV9IiA9PSAiNDA2IiB8fCAiJHtjb2RlfSIgPT0gIjIwMCIgfHwg
-IiR7Y29kZX0iID09ICIyMDIiIF1dOyB0aGVuCiAgICAgICAgICAgICAgICAg
-IHJldHVybiAwCiAgICAgICAgICAgICAgICBmaQogICAgICAgICAgICAgIGVs
-c2UKICAgICAgICAgICAgICAgIGVjaG8gImF0dGVtcHQ9JHthdHRlbXB0fSBj
-dXJsX2V4aXQ9JHtjdXJsX3JjfSIKICAgICAgICAgICAgICAgIHNlZCAtbiAn
-MSw0MHAnIC90bXAvY3VybC5lcnIgfHwgdHJ1ZQogICAgICAgICAgICAgIGZp
-CiAgICAgICAgICAgICAgc2xlZXAgMwogICAgICAgICAgICBkb25lCgogICAg
-ICAgICAgICBlY2hvICIke25hbWV9IHB1YmxpYyBlbmRwb2ludCBkaWQgbm90
-IHJldHVybiBhbiBleHBlY3RlZCBsaXZlIEhUVFAgcmVzcG9uc2UiCiAgICAg
-ICAgICAgIGZhaWxlZD0xCiAgICAgICAgICB9CgogICAgICAgICAgcHJvYmUg
-IkJsZW5kZXIgTUNQIiAiJHtCTEVOREVSX01DUF9VUkx9IgogICAgICAgICAg
-cHJvYmUgIktyaXRhIE1DUCIgIiR7S1JJVEFfTUNQX1VSTH0iCgogICAgICAg
-ICAgZXhpdCAiJHtmYWlsZWR9Igo=
+name: DCC Runtime Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    env:
+      CAPABILITIES_URL: https://hyouka-free-game-engine-mcp.vercel.app/api/capabilities
+    steps:
+      - name: Probe live gateway capabilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsS --retry 5 --retry-delay 2 --connect-timeout 10 --max-time 45             "$CAPABILITIES_URL" > /tmp/capabilities.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/capabilities.json").read_text())
+          providers = {
+              item.get("id"): item
+              for item in data.get("remoteProviders", [])
+          }
+
+          for provider_id in ("blender-dcc", "krita"):
+              item = providers.get(provider_id, {})
+              print(
+                  provider_id,
+                  "configured=", item.get("configured"),
+                  "authConfigured=", item.get("authConfigured"),
+                  "connected=", item.get("connected"),
+                  "toolCount=", item.get("toolCount"),
+                  "error=", item.get("error"),
+              )
+
+          failures = []
+          for provider_id in ("blender-dcc", "krita"):
+              item = providers.get(provider_id)
+              if not item:
+                  failures.append(f"{provider_id}: provider missing")
+                  continue
+              if not item.get("configured"):
+                  failures.append(f"{provider_id}: not configured")
+              if not item.get("authConfigured"):
+                  failures.append(f"{provider_id}: auth not configured")
+              if not item.get("connected"):
+                  failures.append(
+                      f"{provider_id}: disconnected ({item.get('error') or 'no error reported'})"
+                  )
+              if (item.get("toolCount") or 0) <= 0:
+                  failures.append(f"{provider_id}: toolCount={item.get('toolCount')}")
+          if failures:
+              raise SystemExit("DCC runtime smoke failed: " + "; ".join(failures))
+
+          print("connectedToolCount=", data.get("connectedToolCount"))
+          print("DCC runtime smoke passed")
+          PY
