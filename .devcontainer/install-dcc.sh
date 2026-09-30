@@ -15,8 +15,7 @@ sudo apt-get install -y --no-install-recommends \
   ca-certificates curl git gh nginx jq \
   python3 python3-pip python3-venv \
   xz-utils tar gzip unzip \
-  xvfb xauth x11-utils \
-  krita
+  xvfb xauth x11-utils
 
 echo "== Verify GitHub CLI =="
 gh --version | head -n 1
@@ -66,6 +65,29 @@ sudo mkdir -p "${DCC_SITE}"
 sudo python3 -m pip install --break-system-packages --no-cache-dir \
   --target "${DCC_SITE}" \
   "dcc-mcp-blender==0.2.12"
+
+echo "== Install Krita 5.3.4 AppImage =="
+KRITA_VERSION="5.3.4"
+KRITA_APPIMAGE="/tmp/krita-${KRITA_VERSION}-x86_64.AppImage"
+KRITA_APP_DIR="/opt/krita-${KRITA_VERSION}"
+
+if [[ ! -x "/usr/local/bin/krita" ]]; then
+  sudo rm -rf "${KRITA_APP_DIR}" /tmp/squashfs-root "${KRITA_APPIMAGE}"
+  curl -fL --retry 8 --retry-delay 2 -o "${KRITA_APPIMAGE}" \
+    "https://download.kde.org/stable/krita/${KRITA_VERSION}/krita-${KRITA_VERSION}-x86_64.AppImage"
+  chmod +x "${KRITA_APPIMAGE}"
+  cd /tmp
+  "${KRITA_APPIMAGE}" --appimage-extract >/dev/null
+  test -x /tmp/squashfs-root/AppRun
+  sudo mv /tmp/squashfs-root "${KRITA_APP_DIR}"
+  sudo tee /usr/local/bin/krita >/dev/null <<'EOF'
+#!/usr/bin/env bash
+exec /opt/krita-5.3.4/AppRun "$@"
+EOF
+  sudo chmod +x /usr/local/bin/krita
+fi
+
+krita --version | head -n 2
 
 echo "== Install Krita MCP =="
 sudo rm -rf "${KRITA_DIR}"
