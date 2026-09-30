@@ -154,9 +154,53 @@ for attempt in $(seq 1 20); do
 done
 
 if [[ "$PORT_VISIBILITY_OK" -ne 1 ]]; then
-  echo "Unable to make DCC forwarded ports public."
-  cat /tmp/hyouka-ports-visibility.log || true
-  exit 1
+  echo "Direct Codespaces port visibility failed; starting authenticated Actions relay."
+
+  RELAY_SECRET="HYOUKA_DCC_CODESPACE_GH_TOKEN"
+  RELAY_WORKFLOW=".github/workflows/dcc-port-visibility-relay.yml"
+  relay_exit=0
+
+  if ! printf '%s' "$GITHUB_TOKEN" | gh secret set "$RELAY_SECRET" -R "$GITHUB_REPOSITORY"; then
+    echo "Failed to store the temporary Codespaces token as a repository secret."
+    cat /tmp/hyouka-ports-visibility.log || true
+    exit 1
+  fi
+
+  cleanup_relay_secret() {
+    gh secret delete "$RELAY_SECRET" -R "$GITHUB_REPOSITORY" --yes >/dev/null 2>&1 || true
+  }
+  trap cleanup_relay_secret EXIT
+
+  if ! gh workflow run "$RELAY_WORKFLOW" -R "$GITHUB_REPOSITORY" --ref main -f codespace_name="$CODESPACE_NAME"; then
+    echo "Failed to dispatch the DCC port visibility relay workflow."
+    exit 1
+  fi
+
+  relay_run_id=""
+  for attempt in $(seq 1 30); do
+    relay_run_id="$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$RELAY_WORKFLOW" --branch main --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
+    if [[ -n "$relay_run_id" ]]; then
+      break
+    fi
+    sleep 2
+  done
+
+  if [[ -z "$relay_run_id" ]]; then
+    echo "Could not resolve the relay workflow run ID."
+    exit 1
+  fi
+
+  set +e
+  gh run watch "$relay_run_id" -R "$GITHUB_REPOSITORY" --exit-status
+  relay_exit=$?
+  set -e
+
+  if [[ "$relay_exit" -ne 0 ]]; then
+    echo "DCC port visibility relay failed."
+    exit "$relay_exit"
+  fi
+
+  echo "DCC public port relay completed successfully."
 fi
 
 echo "== Verify public Codespaces forwarding =="
