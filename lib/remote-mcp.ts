@@ -172,7 +172,7 @@ function resolveUrl(provider: RemoteMcpProvider): string | null {
 
   if (!raw) return null;
 
-  const normalized = raw.replace(//$/, "");
+  const normalized = raw.replace(/\/$/, "");
   if (!provider.urlSuffix) return normalized;
 
   const suffix = provider.urlSuffix.startsWith("/")
