@@ -283,7 +283,7 @@ jobs:
 
           export DISPLAY=:99
           test -S /tmp/.X11-unix/X99
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--disable-vsync","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           test "$(jq -r '.status' <<<"$START")" = "started"
