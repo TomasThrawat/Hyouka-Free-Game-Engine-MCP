@@ -25,67 +25,6 @@
       "discoveryProtocol": "MCP tools/list"
     },
     {
-      "id": "blender-dcc",
-      "name": "DCC-MCP Blender",
-      "description": "Typed Blender automation over Streamable HTTP. The explicit MCP URL has priority, while the existing Hyouka Blender bridge is a fallback.",
-      "urlSuffix": "/mcp",
-      "enabled": true,
-      "source": "https://github.com/dcc-mcp/dcc-mcp-blender",
-      "license": "MIT",
-      "capabilities": [
-        "modeling",
-        "mesh-editing",
-        "uv",
-        "rigging",
-        "animation",
-        "materials",
-        "shader-nodes",
-        "texture-pipeline",
-        "scene-editing",
-        "physics",
-        "rendering",
-        "compositing",
-        "validation",
-        "glb-export"
-      ],
-      "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list",
-      "urlEnvs": [
-        "HYOUKA_BLENDER_MCP_URL",
-        "BLENDER_MCP_URL",
-        "BLENDER_BRIDGE_URL"
-      ],
-      "tokenEnv": "HYOUKA_BLENDER_MCP_TOKEN",
-      "runtimeManifestUrl": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/dcc-live.json",
-      "runtimeManifestKey": "blender-dcc"
-    },
-    {
-      "id": "krita",
-      "name": "Krita MCP",
-      "description": "Krita painting and raster-art automation over a Streamable HTTP MCP wrapper connected to a running Krita plugin.",
-      "urlSuffix": "/mcp",
-      "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
-      "enabled": true,
-      "source": "https://github.com/nanayax3/krita-mcp",
-      "capabilities": [
-        "canvas",
-        "layers",
-        "painting",
-        "shapes",
-        "filters",
-        "export",
-        "texture-source-art"
-      ],
-      "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list",
-      "urlEnvs": [
-        "HYOUKA_KRITA_MCP_URL",
-        "KRITA_MCP_URL"
-      ],
-      "runtimeManifestUrl": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/dcc-live.json",
-      "runtimeManifestKey": "krita"
-    },
-    {
       "id": "godot-full-control-157",
       "name": "Godot Full Control 157",
       "description": "High-coverage Godot 4 MCP implementation with deep scene, runtime, rendering, audio, animation and physics controls.",

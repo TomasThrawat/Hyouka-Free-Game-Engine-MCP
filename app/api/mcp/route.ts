@@ -7,12 +7,6 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import {
   discoverRemoteMcpTools,
-  gameCapabilityAudit,
-  remoteMcpStatus,
-  remoteMcpToolInventory,
-  remoteMcpToolSchema,
-  invokeRemoteMcpTool,
-  refreshRemoteMcpCaches,
   registerRemoteMcpTools,
 } from "../../../lib/remote-mcp";
 
@@ -160,57 +154,6 @@ function uniqueToolName(id: string, used: Set<string>) {
   return name;
 }
 
-function registerIntegratedDccTools(
-  server: McpServer,
-  remoteTools: Awaited<ReturnType<typeof discoverRemoteMcpTools>>,
-  used: Set<string>,
-) {
-  for (const tool of remoteTools) {
-    const providerPrefix =
-      tool.provider.id === "blender-dcc"
-        ? "blender__"
-        : tool.provider.id === "krita"
-          ? "krita__"
-          : null;
-
-    if (!providerPrefix) continue;
-
-    const name = uniqueToolName(providerPrefix + tool.name, used);
-    const label = tool.provider.id === "blender-dcc" ? "Blender" : "Krita";
-
-    server.registerTool(
-      name,
-      {
-        title: "Godot / " + label + ": " + tool.name,
-        description:
-          tool.description ??
-          "Native " +
-            label +
-            " capability exposed directly inside the unified Godot MCP.",
-        inputSchema: fromJsonSchema(tool.inputSchema),
-      },
-      async (args) =>
-        tool.client.callTool({
-          name: tool.name,
-          arguments: (args ?? {}) as Record<string, unknown>,
-        }),
-    );
-  }
-}
-
-function filterProviderTools(
-  remoteTools: Awaited<ReturnType<typeof discoverRemoteMcpTools>>,
-  providerId: string,
-) {
-  return remoteTools
-    .filter((tool) => tool.provider.id === providerId)
-    .map((tool) => ({
-      name: tool.name,
-      description: tool.description ?? null,
-      inputSchema: tool.inputSchema,
-    }));
-}
-
 async function createHandler() {
   const [inventory, remoteTools] = await Promise.all([
     discoverTools(),
@@ -256,137 +199,6 @@ async function createHandler() {
       async () => out(await call("/health")),
     );
 
-    server.registerTool(
-      "godot_blender_discover_tools",
-      {
-        title: "Discover Blender bridge tools",
-        description:
-          "Return the complete live Blender MCP bridge tool inventory through the unified Godot MCP.",
-        inputSchema: z.object({}),
-      },
-      async () =>
-        out({
-          providerId: "blender-dcc",
-          engine: "Godot",
-          integrated: true,
-          tools: filterProviderTools(remoteTools, "blender-dcc"),
-        }),
-    );
-
-    server.registerTool(
-      "godot_krita_discover_tools",
-      {
-        title: "Discover Krita bridge tools",
-        description:
-          "Return the complete live Krita MCP bridge tool inventory through the unified Godot MCP.",
-        inputSchema: z.object({}),
-      },
-      async () =>
-        out({
-          providerId: "krita",
-          engine: "Godot",
-          integrated: true,
-          tools: filterProviderTools(remoteTools, "krita"),
-        }),
-    );
-
-    server.registerTool(
-      "godot_blender_status",
-      {
-        title: "Blender bridge status",
-        description:
-          "Return the live Blender bridge connection and discovered tool count.",
-        inputSchema: z.object({}),
-      },
-      async () => {
-        const status = await remoteMcpStatus();
-        return out({
-          engine: "Godot",
-          provider: status.providers.find(
-            (provider) => provider.id === "blender-dcc",
-          ) ?? null,
-        });
-      },
-    );
-
-    server.registerTool(
-      "godot_krita_status",
-      {
-        title: "Krita bridge status",
-        description:
-          "Return the live Krita bridge connection and discovered tool count.",
-        inputSchema: z.object({}),
-      },
-      async () => {
-        const status = await remoteMcpStatus();
-        return out({
-          engine: "Godot",
-          provider:
-            status.providers.find((provider) => provider.id === "krita") ?? null,
-        });
-      },
-    );
-
-    server.registerTool(
-      "godot_remote_providers",
-      {
-        title: "Godot integrated provider status",
-        description:
-          "Show Blender and Krita integration status inside the unified Godot MCP.",
-        inputSchema: z.object({}),
-      },
-      async () => {
-        const status = await remoteMcpStatus();
-        return out({
-          providers: status.providers.filter(
-            (provider) =>
-              provider.id === "blender-dcc" || provider.id === "krita",
-          ),
-        });
-      },
-    );
-
-    server.registerTool(
-      "godot_game_capability_audit",
-      {
-        title: "Full Godot game capability audit",
-        description:
-          "Return the free-game capability matrix and the status of integrated providers.",
-        inputSchema: z.object({}),
-      },
-      async () => out(await gameCapabilityAudit()),
-    );
-
-    server.registerTool(
-      "godot_refresh_integrated_tools",
-      {
-        title: "Refresh integrated Godot tools",
-        description:
-          "Refresh the Godot, remote Godot, Blender, and Krita tool inventories exposed by this unified MCP.",
-        inputSchema: z.object({}),
-      },
-      async () => {
-        refreshRemoteMcpCaches();
-        toolCache = null;
-        const [godot, allRemote] = await Promise.all([
-          call("/discover"),
-          remoteMcpToolInventory(),
-        ]);
-        return out({
-          godot,
-          remote: allRemote,
-          blender: filterProviderTools(
-            await discoverRemoteMcpTools(),
-            "blender-dcc",
-          ),
-          krita: filterProviderTools(
-            await discoverRemoteMcpTools(),
-            "krita",
-          ),
-        });
-      },
-    );
-
     for (const tool of inventory) {
       const name = uniqueToolName(tool.id, used);
       server.registerTool(
@@ -405,12 +217,14 @@ async function createHandler() {
       );
     }
 
-    registerIntegratedDccTools(server, remoteTools, used);
-
-    const nonDccRemoteTools = remoteTools.filter(
-      (tool) => tool.provider.id !== "blender-dcc" && tool.provider.id !== "krita",
+    registerRemoteMcpTools(
+      server,
+      remoteTools.filter(
+        (tool) =>
+          tool.provider.id !== "blender-dcc" && tool.provider.id !== "krita",
+      ),
+      used,
     );
-    registerRemoteMcpTools(server, nonDccRemoteTools, used);
   });
 }
 
