@@ -18,7 +18,7 @@ publish_runtime_failure() {
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "${MANIFEST_API}?ref=main" 2>/dev/null || true)"
-  current_sha="$(printf '%s' "${current}" | jq -r '.sha // empty' 2>/dev/null || true)'
+  current_sha="$(printf '%s' "${current}" | jq -r '.sha // empty' 2>/dev/null || true)"
   cat > /tmp/dcc-live.json <<EOF
 {
   "version": "1.0.0",
@@ -58,16 +58,19 @@ EOF
   fi
 }
 
-on_runtime_error() {
+on_runtime_exit() {
   local rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    return 0
+  fi
   local failed_stage="${STAGE}"
-  trap - ERR
+  trap - EXIT
   set +e
   echo "DCC runtime failed at stage=${failed_stage} exit=${rc}."
   publish_runtime_failure "${failed_stage}" "${rc}"
   exit "${rc}"
 }
-trap on_runtime_error ERR
+trap on_runtime_exit EXIT
 
 
 : "${HYOUKA_DCC_MCP_TOKEN:?HYOUKA_DCC_MCP_TOKEN must be available as a Codespaces secret}"
