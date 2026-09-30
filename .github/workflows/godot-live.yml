@@ -101,10 +101,11 @@ jobs:
           chmod 700 "$XDG_RUNTIME_DIR"
           export WAYLAND_DISPLAY=godot-e2e
           export WLR_BACKENDS=headless
+          export WLR_HEADLESS_OUTPUTS=1
           export WLR_LIBINPUT_NO_DEVICES=1
-          export LIBSEAT_BACKEND=noop
-          export LABWC_FALLBACK_OUTPUT=HEADLESS-1
-          labwc >/tmp/labwc-godot-e2e.log 2>&1 &
+          export WLR_RENDERER=pixman
+          export XDG_SESSION_TYPE=wayland
+          labwc --debug >/tmp/labwc-godot-e2e.log 2>&1 &
           LABWC_PID=$!
           for i in $(seq 1 30); do
             if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
