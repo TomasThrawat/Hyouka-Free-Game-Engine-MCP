@@ -202,14 +202,14 @@ async function connectProvider(
   url: string,
 ): Promise<ConnectedProvider> {
   const token = bearerToken(provider);
+  const authProvider = token
+    ? {
+        token: async () => token,
+      }
+    : undefined;
+
   const transport = new StreamableHTTPClientTransport(new URL(url), {
-    requestInit: token
-      ? {
-          headers: {
-            authorization: "Bearer " + token,
-          },
-        }
-      : undefined,
+    authProvider,
   });
 
   const client = new Client({
@@ -284,9 +284,21 @@ async function getConnectedProviders(): Promise<ConnectedProvider[]> {
         });
         return entry;
       } catch (error) {
+        const diagnostic = error as {
+          name?: unknown;
+          message?: unknown;
+          code?: unknown;
+          status?: unknown;
+        };
+        const details = [
+          typeof diagnostic.name === "string" ? diagnostic.name : null,
+          typeof diagnostic.code === "string" ? diagnostic.code : null,
+          typeof diagnostic.status === "number" ? "HTTP " + diagnostic.status : null,
+          typeof diagnostic.message === "string" ? diagnostic.message : String(error),
+        ].filter(Boolean).join(": ");
         remoteCache.set(provider.id, {
           expiresAt: now() + DISCOVERY_TTL_MS,
-          error: String(error),
+          error: details,
         });
         return undefined;
       }
@@ -330,6 +342,7 @@ export async function remoteMcpToolInventory() {
       name: provider.name,
       source: provider.source ?? null,
       configured: Boolean(resolveUrl(provider)),
+      authConfigured: Boolean(bearerToken(provider)),
       connected: Boolean(entry),
       toolCount: entry?.tools.length ?? 0,
       tools: entry?.tools.map((tool) => ({
@@ -440,6 +453,7 @@ export async function remoteMcpStatus() {
         name: provider.name,
         enabled: provider.enabled !== false,
         configured: Boolean(url),
+        authConfigured: Boolean(bearerToken(provider)),
         url: url ? new URL(url).origin + new URL(url).pathname : null,
         source: provider.source ?? null,
         license: provider.license ?? null,
