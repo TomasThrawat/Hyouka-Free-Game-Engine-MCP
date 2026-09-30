@@ -216,7 +216,7 @@ jobs:
                   file.close()
           EOF
           export DISPLAY=:99
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy","--disable-vsync"],background:true,timeoutSeconds:30}')
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           PID=$(jq -r '.pid' <<<"$START")
