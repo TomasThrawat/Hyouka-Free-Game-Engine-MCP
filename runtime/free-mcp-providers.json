@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
+  "version": "1.2.0",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -20,7 +20,9 @@
         "godot-asset-library",
         "license-audit",
         "asset-download"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "blender-dcc",
@@ -47,7 +49,9 @@
         "compositing",
         "validation",
         "glb-export"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "krita",
@@ -66,7 +70,9 @@
         "filters",
         "export",
         "texture-source-art"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "godot-full-control-157",
@@ -88,7 +94,9 @@
         "signals",
         "runtime-input",
         "project-management"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "godot-live-180",
@@ -110,7 +118,9 @@
         "screenshots",
         "runtime-input",
         "deep-editor-control"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "sfxmint",
@@ -125,7 +135,9 @@
         "ui-sounds",
         "search",
         "cc0-audio"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "sfx-gen-local",
@@ -141,7 +153,9 @@
         "ambience",
         "variation-generation",
         "local-audio"
-      ]
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
     }
   ]
 }
