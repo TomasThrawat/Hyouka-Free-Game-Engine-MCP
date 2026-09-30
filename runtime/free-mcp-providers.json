@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -20,6 +20,53 @@
         "godot-asset-library",
         "license-audit",
         "asset-download"
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
+    },
+    {
+      "id": "blender-mcp",
+      "name": "Blender MCP",
+      "description": "Remote Blender MCP over Streamable HTTP. Discovered dynamically with MCP tools/list inside the unified Godot MCP.",
+      "urlEnv": "HYOUKA_BLENDER_MCP_URL",
+      "tokenEnv": "HYOUKA_BLENDER_MCP_TOKEN",
+      "enabled": true,
+      "source": "https://github.com/dcc-mcp/dcc-mcp-blender",
+      "license": "MIT",
+      "capabilities": [
+        "scene-management",
+        "objects",
+        "mesh",
+        "uv",
+        "rigging",
+        "animation",
+        "materials",
+        "shader-nodes",
+        "rendering",
+        "physics",
+        "compositing",
+        "glb-export"
+      ],
+      "dynamicDiscovery": true,
+      "discoveryProtocol": "MCP tools/list"
+    },
+    {
+      "id": "krita-mcp",
+      "name": "Krita MCP",
+      "description": "Remote Krita MCP over Streamable HTTP. Discovered dynamically with MCP tools/list inside the unified Godot MCP.",
+      "urlEnv": "HYOUKA_KRITA_MCP_URL",
+      "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
+      "enabled": true,
+      "source": "https://github.com/nanayax3/krita-mcp",
+      "license": "MIT",
+      "capabilities": [
+        "canvas",
+        "layers",
+        "painting",
+        "shapes",
+        "filters",
+        "export",
+        "texture-source-art"
       ],
       "dynamicDiscovery": true,
       "discoveryProtocol": "MCP tools/list"
