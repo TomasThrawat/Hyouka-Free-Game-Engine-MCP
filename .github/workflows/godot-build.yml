@@ -26,6 +26,34 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-
 
+      - name: Validate DCC runtime scripts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for script in .devcontainer/*.sh; do
+            bash -n "$script"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path(".devcontainer/start-dcc.sh").read_text(encoding="utf-8")
+          forbidden = (
+              "proxy_set_header Host $host;",
+              "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+          )
+          required = (
+              r"proxy_set_header Host \$host;",
+              r"proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;",
+          )
+          for value in forbidden:
+              if value in text:
+                  raise SystemExit(f"Unescaped nginx shell variable found: {value}")
+          for value in required:
+              if value not in text:
+                  raise SystemExit(f"Expected escaped nginx variable missing: {value}")
+          print("DCC shell syntax and nginx heredoc escaping passed.")
+          PY
+
       - name: Run Godot CI
         env:
           NEXT_TELEMETRY_DISABLED: "1"
