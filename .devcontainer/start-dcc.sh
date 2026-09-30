@@ -23,7 +23,7 @@ publish_runtime_failure() {
 {
   "version": "1.0.0",
   "status": "error",
-  "runtime": "github-codespaces-cloudflare-quick-tunnel",
+  "runtime": "github-codespaces-public-port-or-cloudflare",
   "updatedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
   "error": "runtime_failed",
   "stage": "${stage}",
@@ -246,70 +246,79 @@ EOF
 sudo nginx -t -c /tmp/hyouka-dcc-nginx.conf
 sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
-STAGE="start_cloudflared"
-echo "== Start Cloudflare Quick Tunnel =="
-rm -f /tmp/hyouka-cloudflared.log
-nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9888 >/tmp/hyouka-cloudflared.log 2>&1 &
-CLOUDFLARED_PID=$!
-echo "cloudflared pid=$CLOUDFLARED_PID"
+BLENDER_PUBLIC_URL=""
+KRITA_PUBLIC_URL=""
+PUBLIC_PORTS_OK=0
 
-TUNNEL_URL=""
-for attempt in $(seq 1 60); do
-  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -1 || true)"
-  if [[ -n "$TUNNEL_URL" ]]; then
-    break
+STAGE="configure_public_ports"
+echo "== Configure public GitHub Codespaces DCC ports =="
+if command -v gh >/dev/null 2>&1 && gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
+  if gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" >/tmp/hyouka-codespace-ports.log 2>&1; then
+    BLENDER_PUBLIC_URL="https://${CODESPACE_NAME}-9765.app.github.dev/blender/mcp"
+    KRITA_PUBLIC_URL="https://${CODESPACE_NAME}-9797.app.github.dev/krita/mcp"
+    PUBLIC_PORTS_OK=1
+    echo "Public GitHub Codespaces ports configured."
+  else
+    echo "Public GitHub Codespaces ports unavailable; using Cloudflare fallback."
+    cat /tmp/hyouka-codespace-ports.log 2>/dev/null || true
   fi
-  if ! kill -0 "$CLOUDFLARED_PID" 2>/dev/null; then
-    echo "cloudflared exited before publishing a tunnel URL."
-    sed -n '1,220p' /tmp/hyouka-cloudflared.log || true
-    exit 1
-  fi
-  sleep 2
-done
+fi
 
-if [[ -z "$TUNNEL_URL" ]]; then
-  echo "Cloudflare Quick Tunnel URL was not published."
-  sed -n '1,220p' /tmp/hyouka-cloudflared.log || true
+if [[ "${PUBLIC_PORTS_OK}" -eq 0 ]]; then
+  STAGE="start_cloudflared"
+  echo "== Start Cloudflare Quick Tunnel =="
+  rm -f /tmp/hyouka-cloudflared.log
+  nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9888 >/tmp/hyouka-cloudflared.log 2>&1 &
+  CLOUDFLARED_PID=$!
+  echo "cloudflared pid=${CLOUDFLARED_PID}"
+  TUNNEL_URL=""
+  for attempt in $(seq 1 60); do
+    TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -1 || true)"
+    if [[ -n "${TUNNEL_URL}" ]]; then break; fi
+    if ! kill -0 "${CLOUDFLARED_PID}" 2>/dev/null; then
+      echo "cloudflared exited before publishing a tunnel URL."
+      sed -n "1,220p" /tmp/hyouka-cloudflared.log || true
+      break
+    fi
+    sleep 2
+  done
+  if [[ -n "${TUNNEL_URL}" ]]; then
+    BLENDER_PUBLIC_URL="${TUNNEL_URL}/blender/mcp"
+    KRITA_PUBLIC_URL="${TUNNEL_URL}/krita/mcp"
+    echo "Cloudflare tunnel: ${TUNNEL_URL}"
+  fi
+fi
+
+if [[ -z "${BLENDER_PUBLIC_URL}" || -z "${KRITA_PUBLIC_URL}" ]]; then
+  echo "No public DCC endpoints were established."
   exit 1
 fi
 
-echo "Cloudflare tunnel: $TUNNEL_URL"
-
 STAGE="probe_tunnel"
-echo "== Verify protected tunneled MCP endpoints =="
-for path in "/blender/mcp" "/krita/mcp"; do
-  CODE="$(curl -sS -o /tmp/hyouka-tunnel-probe.json -w '%{http_code}' \
-    -H "Authorization: Bearer ${HYOUKA_DCC_MCP_TOKEN}" \
-    -H 'Accept: application/json, text/event-stream' \
-    "${TUNNEL_URL}${path}" || true)"
-  case "$CODE" in
-    200|400|405)
-      echo "${path}: HTTP $CODE"
-      ;;
-    *)
-      echo "${path}: unexpected HTTP $CODE"
-      cat /tmp/hyouka-tunnel-probe.json 2>/dev/null || true
-      exit 1
-      ;;
+echo "== Verify protected public MCP endpoints =="
+for URL in "${BLENDER_PUBLIC_URL}" "${KRITA_PUBLIC_URL}"; do
+  CODE="$(curl -sS -o /tmp/hyouka-tunnel-probe.json -w '%{http_code}' -H "Authorization: Bearer ${HYOUKA_DCC_MCP_TOKEN}" -H 'Accept: application/json, text/event-stream' "${URL}" || true)"
+  case "${CODE}" in
+    200|400|405) echo "${URL}: HTTP ${CODE}" ;;
+    *) echo "${URL}: unexpected HTTP ${CODE}"; cat /tmp/hyouka-tunnel-probe.json 2>/dev/null || true; exit 1 ;;
   esac
 done
-
 STAGE="publish_manifest"
 echo "== Publish live DCC runtime manifest =="
 cat >/tmp/dcc-live.json <<EOF
 {
   "version": "1.0.0",
   "status": "online",
-  "runtime": "github-codespaces-cloudflare-quick-tunnel",
+  "runtime": "github-codespaces-public-port-or-cloudflare",
   "updatedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
   "providers": {
     "blender-dcc": {
       "status": "online",
-      "url": "${TUNNEL_URL}/blender/mcp"
+      "url": "${BLENDER_PUBLIC_URL}"
     },
     "krita": {
       "status": "online",
-      "url": "${TUNNEL_URL}/krita/mcp"
+      "url": "${KRITA_PUBLIC_URL}"
     }
   }
 }
@@ -374,5 +383,5 @@ if [[ "$PUBLISHED" -ne 1 ]]; then
 fi
 
 echo "DCC live manifest published successfully."
-echo "BLENDER_PUBLIC_URL=${TUNNEL_URL}/blender/mcp"
-echo "KRITA_PUBLIC_URL=${TUNNEL_URL}/krita/mcp"
+echo "BLENDER_PUBLIC_URL=${BLENDER_PUBLIC_URL}"
+echo "KRITA_PUBLIC_URL=${KRITA_PUBLIC_URL}"
