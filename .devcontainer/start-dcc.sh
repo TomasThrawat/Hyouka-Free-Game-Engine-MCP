@@ -8,6 +8,8 @@ KRITA_VENV="/opt/krita-mcp-venv"
 ROOT="/workspaces/Hyouka-Free-Game-Engine-MCP"
 
 : "${HYOUKA_DCC_MCP_TOKEN:?HYOUKA_DCC_MCP_TOKEN must be available as a Codespaces secret}"
+: "${GITHUB_TOKEN:?GITHUB_TOKEN must be available inside the Codespace}"
+: "${CODESPACE_NAME:?CODESPACE_NAME must be available inside the Codespace}"
 
 echo "== Stop previous DCC processes =="
 for pattern in "blender_bootstrap.py" "krita_mcp_http.py" "Xvfb :99"; do
@@ -41,7 +43,7 @@ for i in $(seq 1 120); do
   sleep 1
 done
 
-if [[ "${KRITA_READY}" -ne 1 ]]; then
+if [[ "$KRITA_READY" -ne 1 ]]; then
   echo "Krita plugin did not become healthy."
   sed -n '1,220p' /tmp/hyouka-krita.log || true
   exit 1
@@ -73,13 +75,13 @@ for i in $(seq 1 90); do
   sleep 1
 done
 
-if [[ "${BLENDER_READY}" -ne 1 ]]; then
+if [[ "$BLENDER_READY" -ne 1 ]]; then
   echo "Blender MCP internal port did not open."
   sed -n '1,260p' /tmp/hyouka-blender-mcp.log || true
   exit 1
 fi
 
-if [[ "${KRITA_MCP_READY}" -ne 1 ]]; then
+if [[ "$KRITA_MCP_READY" -ne 1 ]]; then
   echo "Krita MCP internal port did not open."
   sed -n '1,260p' /tmp/hyouka-krita-mcp.log || true
   exit 1
@@ -137,10 +139,41 @@ EOF
 sudo nginx -t -c /tmp/hyouka-dcc-nginx.conf
 sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
-echo "== Public Codespaces forwarding =="
-if command -v gh >/dev/null 2>&1 && [[ -n "${CODESPACE_NAME:-}" ]]; then
-  GH_TOKEN="${GITHUB_TOKEN:-}" gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" || true
+echo "== Configure public Codespaces forwarding =="
+command -v gh >/dev/null 2>&1 || { echo "GitHub CLI is required but was not installed."; exit 1; }
+
+PORT_VISIBILITY_OK=0
+for attempt in $(seq 1 20); do
+  if GH_TOKEN="${GITHUB_TOKEN}" gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" >/tmp/hyouka-ports-visibility.log 2>&1; then
+    PORT_VISIBILITY_OK=1
+    break
+  fi
+  echo "Port visibility attempt ${attempt}/20 failed; retrying..."
+  tail -n 20 /tmp/hyouka-ports-visibility.log || true
+  sleep 2
+done
+
+if [[ "$PORT_VISIBILITY_OK" -ne 1 ]]; then
+  echo "Unable to make DCC forwarded ports public."
+  cat /tmp/hyouka-ports-visibility.log || true
+  exit 1
 fi
+
+echo "== Verify public Codespaces forwarding =="
+PORTS_JSON="$(GH_TOKEN="${GITHUB_TOKEN}" gh codespace ports -c "${CODESPACE_NAME}" --json sourcePort,visibility,browseUrl)"
+python3 -c '
+import json, sys
+ports = json.loads(sys.argv[1])
+expected = {9765, 9797}
+seen = {int(p["sourcePort"]) for p in ports if int(p["sourcePort"]) in expected}
+visibility = {int(p["sourcePort"]): p["visibility"] for p in ports if int(p["sourcePort"]) in expected}
+missing = expected - seen
+bad = {port: value for port, value in visibility.items() if value != "public"}
+if missing or bad:
+    raise SystemExit(f"Port visibility verification failed: missing={sorted(missing)}, bad={bad}")
+for port in sorted(expected):
+    print(f"{port}: {visibility[port]}")
+' "$PORTS_JSON"
 
 echo "DCC MCP runtime ready"
 echo "BLENDER_PUBLIC_URL=https://${CODESPACE_NAME}-9765.app.github.dev/mcp"

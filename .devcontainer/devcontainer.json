@@ -6,13 +6,11 @@
   "portsAttributes": {
     "9765": {
       "label": "Blender MCP",
-      "protocol": "http",
-      "visibility": "public"
+      "protocol": "http"
     },
     "9797": {
       "label": "Krita MCP",
-      "protocol": "http",
-      "visibility": "public"
+      "protocol": "http"
     }
   },
   "containerEnv": {

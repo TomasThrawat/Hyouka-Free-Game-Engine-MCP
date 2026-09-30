@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BLENDER_VERSION="5.2.2"
+BLENDER_VERSION="${BLENDER_VERSION}"
 BLENDER_DIR="/opt/blender-${BLENDER_VERSION}"
 BLENDER_ARCHIVE="/tmp/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
 DCC_SITE="/opt/dcc-mcp-python"
@@ -12,11 +12,14 @@ export DEBIAN_FRONTEND=noninteractive
 echo "== Install OS dependencies =="
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
-  ca-certificates curl git nginx \
+  ca-certificates curl git gh nginx \
   python3 python3-pip python3-venv \
   xz-utils tar gzip unzip \
   xvfb xauth x11-utils \
   krita
+
+echo "== Verify GitHub CLI =="
+gh --version | head -n 1
 
 echo "== Install Blender ${BLENDER_VERSION} =="
 if [[ ! -x "${BLENDER_DIR}/blender" ]]; then
@@ -58,11 +61,11 @@ mkdir -p "${KRITA_PYK}"
 cp -a "${KRITA_DIR}/krita-plugin/." "${KRITA_PYK}/"
 
 DESKTOP_FILE="$(find "${KRITA_PYK}" -maxdepth 1 -type f -name '*.desktop' | head -n 1)"
-test -n "${DESKTOP_FILE}"
-MODULE_NAME="$(awk -F= '/^X-KDE-Library=/{print $2; exit}' "${DESKTOP_FILE}")"
-test -n "${MODULE_NAME}"
+test -n "$DESKTOP_FILE"
+MODULE_NAME="$(awk -F= '/^X-KDE-Library=/{print $2; exit}' "$DESKTOP_FILE")"
+test -n "$MODULE_NAME"
 
-python3 - "${MODULE_NAME}" <<'PY'
+python3 - "$MODULE_NAME" <<'PY'
 from pathlib import Path
 import sys
 
