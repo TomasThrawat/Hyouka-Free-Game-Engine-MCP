@@ -178,7 +178,7 @@ echo "cloudflared pid=$CLOUDFLARED_PID"
 
 TUNNEL_URL=""
 for attempt in $(seq 1 60); do
-  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\\.trycloudflare\\.com' /tmp/hyouka-cloudflared.log | head -1 || true)"
+  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | head -1 || true)"
   if [[ -n "$TUNNEL_URL" ]]; then
     break
   fi
