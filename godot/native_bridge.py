@@ -141,6 +141,27 @@ def install_native(project_dir, port):
     project_file.write_text(patched, encoding="utf-8")
     return port
 
+def wait_native_channel(pid, port, timeout=20):
+    deadline = __import__("time").time() + max(int(timeout), 1)
+    url = "http://127.0.0.1:" + str(int(port)) + "/state"
+    while __import__("time").time() < deadline:
+        proc = bridge.PROCS.get(pid)
+        if proc is not None and proc[0].poll() is not None:
+            return False
+        try:
+            with urlopen(Request(url), timeout=1) as response:
+                if int(response.status) != 200:
+                    pass
+                else:
+                    payload = json.loads(response.read())
+                    if payload.get("status") == "ok":
+                        return True
+        except (HTTPError, URLError, ValueError, OSError):
+            pass
+        __import__("time").sleep(0.25)
+    return False
+
+
 def native_run(args, cwd=None, timeout=120, bg=False):
     if not bg:
         return ORIGINAL_RUN(args, cwd, timeout, bg)
@@ -173,6 +194,34 @@ def native_run(args, cwd=None, timeout=120, bg=False):
     bridge.PROCS[p.pid] = (p, __import__("time").time(), cmd, str(wd))
     NATIVE_PROCS[p.pid] = {"port": port, "project": str(wd)}
     save_session(wd, p.pid, port)
+    if not wait_native_channel(p.pid, port, min(max(int(timeout), 1), 20)):
+        stdout, stderr = read_logs({"pid":p.pid, "project":str(wd), "stdoutLog":str(stdout_path), "stderrLog":str(stderr_path)})
+        try:
+            if p.poll() is None:
+                os.killpg(p.pid, signal.SIGTERM)
+        except OSError:
+            pass
+        bridge.PROCS.pop(p.pid, None)
+        NATIVE_PROCS.pop(p.pid, None)
+        handle_pair = LOG_HANDLES.pop(p.pid, None)
+        if handle_pair:
+            for handle in handle_pair:
+                try:
+                    handle.close()
+                except Exception:
+                    pass
+        cleanup_native(wd)
+        return {
+            "status":"error",
+            "engine":"Godot",
+            "message":"native state channel did not become ready before timeout",
+            "pid":p.pid,
+            "returnCode":p.poll(),
+            "stdout":stdout,
+            "stderr":stderr,
+            "command":cmd,
+            "cwd":str(wd),
+        }
     return {"status":"started","pid":p.pid,"command":cmd,"cwd":str(wd),"nativeGodotControl":True,"port":port}
 
 def native_start_project(args, cwd=None, timeout=120):
