@@ -19,8 +19,6 @@ export type RemoteMcpProvider = {
   source?: string;
   license?: string;
   capabilities?: string[];
-  runtimeManifestUrl?: string;
-  runtimeManifestKey?: string;
 };
 
 export type RemoteMcpTool = {
@@ -42,18 +40,6 @@ type CapabilityMatrix = {
   domains: Array<Record<string, unknown>>;
 };
 
-type RuntimeManifestEntry = {
-  url?: string | null;
-  status?: string | null;
-};
-
-type RuntimeManifest = {
-  version?: string;
-  updatedAt?: string;
-  status?: string;
-  providers?: Record<string, RuntimeManifestEntry>;
-};
-
 type ConnectedProvider = {
   provider: RemoteMcpProvider;
   client: Client;
@@ -70,9 +56,6 @@ const DEFAULT_REGISTRY_URL =
 const DEFAULT_CAPABILITY_MATRIX_URL =
   "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/free-game-capability-matrix.json";
 
-const DEFAULT_DCC_LIVE_MANIFEST_URL =
-  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/dcc-live.json";
-
 const registryCache: { expiresAt: number; registry: Registry } | null = null;
 const capabilityCache: { expiresAt: number; matrix: CapabilityMatrix } | null = null;
 
@@ -83,11 +66,6 @@ let cachedCapabilities: { expiresAt: number; matrix: CapabilityMatrix } | null =
 const remoteCache = new Map<
   string,
   { expiresAt: number; entry?: ConnectedProvider; error?: string }
->();
-
-const runtimeManifestCache = new Map<
-  string,
-  { expiresAt: number; manifest: RuntimeManifest }
 >();
 
 const DISCOVERY_TTL_MS = 15_000;
@@ -220,77 +198,9 @@ function resolveUrl(provider: RemoteMcpProvider): string | null {
   return normalizeResolvedUrl(provider, raw);
 }
 
-async function loadRuntimeManifest(
-  provider: RemoteMcpProvider,
-): Promise<RuntimeManifest | null> {
-  const manifestUrl =
-    provider.runtimeManifestUrl?.trim() || DEFAULT_DCC_LIVE_MANIFEST_URL;
-  const t = now();
-  const cached = runtimeManifestCache.get(manifestUrl);
-  if (cached && cached.expiresAt > t) {
-    return cached.manifest;
-  }
-
-  const response = await fetch(manifestUrl + "?t=" + t, {
-    cache: "no-store",
-    headers: {
-      "cache-control": "no-cache",
-      pragma: "no-cache",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      "Runtime manifest fetch failed: HTTP " + response.status,
-    );
-  }
-
-  const value = (await response.json()) as RuntimeManifest;
-  const manifest =
-    value &&
-    typeof value === "object" &&
-    value.providers &&
-    typeof value.providers === "object"
-      ? value
-      : { version: "invalid", providers: {} };
-
-  runtimeManifestCache.set(manifestUrl, {
-    expiresAt: t + DISCOVERY_TTL_MS,
-    manifest,
-  });
-  return manifest;
-}
-
-function isManifestOnlyProvider(provider: RemoteMcpProvider): boolean {
-  return provider.id === "blender-dcc" || provider.id === "krita";
-}
-
 async function resolveUrlAsync(
   provider: RemoteMcpProvider,
 ): Promise<string | null> {
-  if (provider.runtimeManifestUrl) {
-    try {
-      const manifest = await loadRuntimeManifest(provider);
-      const key = provider.runtimeManifestKey?.trim() || provider.id;
-      const entry = manifest?.providers?.[key];
-      if (entry?.url && entry.status === "online") {
-        return normalizeResolvedUrl(provider, entry.url);
-      }
-
-      if (isManifestOnlyProvider(provider)) {
-        return null;
-      }
-
-      return resolveUrl(provider);
-    } catch {
-      if (isManifestOnlyProvider(provider)) {
-        return null;
-      }
-
-      return resolveUrl(provider);
-    }
-  }
-
   return resolveUrl(provider);
 }
 
