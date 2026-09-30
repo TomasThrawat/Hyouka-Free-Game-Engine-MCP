@@ -105,7 +105,7 @@ jobs:
           export WESTON_SRC_DIR="$RUNNER_TEMP/weston-$WESTON_VERSION"
           export WESTON_PREFIX="$RUNNER_TEMP/weston-prefix"
           if test ! -x "$WESTON_PREFIX/bin/weston"; then
-            curl -fsSL --max-time 60 "https://wayland.freedesktop.org/releases/weston-$WESTON_VERSION.tar.xz" -o "$RUNNER_TEMP/weston-$WESTON_VERSION.tar.xz"
+            curl -fsSL --max-time 60 "https://gitlab.freedesktop.org/wayland/weston/-/releases/$WESTON_VERSION/downloads/weston-$WESTON_VERSION.tar.xz" -o "$RUNNER_TEMP/weston-$WESTON_VERSION.tar.xz"
             rm -rf "$WESTON_SRC_DIR" "$RUNNER_TEMP/weston-build"
             tar -xJf "$RUNNER_TEMP/weston-$WESTON_VERSION.tar.xz" -C "$RUNNER_TEMP"
             mv "$RUNNER_TEMP/weston-$WESTON_VERSION" "$WESTON_SRC_DIR"
