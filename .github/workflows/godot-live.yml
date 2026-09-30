@@ -122,13 +122,11 @@ jobs:
               -Drenderer-gl=false \
               -Dxwayland=false \
               -Dsystemd=false \
-              -Dlauncher-libseat=false \
               -Dimage-jpeg=false \
               -Dimage-webp=false \
               -Dtools=[] \
               -Ddemo-clients=false \
               -Dsimple-clients=[] \
-              -Dwcap-decode=false \
               -Dcolor-management-lcms=false
             meson compile -C "$RUNNER_TEMP/weston-build"
             meson install -C "$RUNNER_TEMP/weston-build"
