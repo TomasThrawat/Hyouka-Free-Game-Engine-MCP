@@ -266,7 +266,7 @@ CLOUDFLARED_PID=$!
 echo "cloudflared pid=${CLOUDFLARED_PID}"
 TUNNEL_URL=""
 for attempt in $(seq 1 60); do
-  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\\.trycloudflare\\.com' /tmp/hyouka-cloudflared.log | sed -n '1p' || true)"
+  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/hyouka-cloudflared.log | sed -n '1p' || true)"
   if [[ -n "${TUNNEL_URL}" ]]; then break; fi
   if ! kill -0 "${CLOUDFLARED_PID}" 2>/dev/null; then
     echo "cloudflared exited before publishing a tunnel URL."
