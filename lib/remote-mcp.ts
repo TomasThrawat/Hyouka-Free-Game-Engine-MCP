@@ -272,7 +272,10 @@ async function resolveUrlAsync(
       if (entry?.url && entry.status !== "offline") {
         return normalizeResolvedUrl(provider, entry.url);
       }
-      return null;
+      // Do not let a stale/offline runtime manifest hide an explicitly
+      // configured provider URL while a Codespace is restarting or rotating
+      // its live tunnel.
+      return resolveUrl(provider);
     } catch {
       return resolveUrl(provider);
     }
