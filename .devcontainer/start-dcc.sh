@@ -225,8 +225,8 @@ http {
       proxy_cache off;
       proxy_read_timeout 3600s;
       proxy_send_timeout 3600s;
-      proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host \$host;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 
     location /krita/ {
@@ -236,8 +236,8 @@ http {
       proxy_cache off;
       proxy_read_timeout 3600s;
       proxy_send_timeout 3600s;
-      proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host \$host;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
   }
 }
