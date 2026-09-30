@@ -261,7 +261,7 @@ jobs:
           DISPLAY_SOCKET="$(find /tmp/.X11-unix -maxdepth 1 -type s -name 'X*' -print -quit)"
           test -n "$DISPLAY_SOCKET"
           export DISPLAY=":$(printf "%s" "$DISPLAY_SOCKET" | sed 's#.*/X##')"
-          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
+          RUN_JSON=$(jq -nc --arg path "$TEST_ROOT" '{toolId:"godot-run-project",args:["--display-driver","x11","--rendering-driver","opengl3_es","--path",$path,"--audio-driver","Dummy"],background:true,timeoutSeconds:30}')
           START=$(curl -sS --fail-with-body --max-time 45 -X POST http://127.0.0.1:9765/invoke -H 'content-type: application/json' -d "$RUN_JSON")
           echo "$START"
           test "$(jq -r '.status' <<<"$START")" = "started"
