@@ -261,6 +261,10 @@ async function loadRuntimeManifest(
   return manifest;
 }
 
+function isManifestOnlyProvider(provider: RemoteMcpProvider): boolean {
+  return provider.id === "blender-dcc" || provider.id === "krita";
+}
+
 async function resolveUrlAsync(
   provider: RemoteMcpProvider,
 ): Promise<string | null> {
@@ -269,14 +273,20 @@ async function resolveUrlAsync(
       const manifest = await loadRuntimeManifest(provider);
       const key = provider.runtimeManifestKey?.trim() || provider.id;
       const entry = manifest?.providers?.[key];
-      if (entry?.url && entry.status !== "offline") {
+      if (entry?.url && entry.status === "online") {
         return normalizeResolvedUrl(provider, entry.url);
       }
-      // Do not let a stale/offline runtime manifest hide an explicitly
-      // configured provider URL while a Codespace is restarting or rotating
-      // its live tunnel.
+
+      if (isManifestOnlyProvider(provider)) {
+        return null;
+      }
+
       return resolveUrl(provider);
     } catch {
+      if (isManifestOnlyProvider(provider)) {
+        return null;
+      }
+
       return resolveUrl(provider);
     }
   }
