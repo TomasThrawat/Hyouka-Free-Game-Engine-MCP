@@ -10,6 +10,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Validate DCC startup shell syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n .devcontainer/start-dcc.sh
+
       - name: Run DCC installer in the Codespaces base image
         shell: bash
         run: |

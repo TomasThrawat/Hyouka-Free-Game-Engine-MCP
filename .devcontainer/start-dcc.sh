@@ -23,24 +23,21 @@ command -v gh >/dev/null 2>&1 || {
 
 # Prefer the credential already authenticated in gh.
 # Only fall back to the Codespaces GITHUB_TOKEN when gh has no stored login.
-if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
-  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    export GH_TOKEN="${GITHUB_TOKEN}"
-    if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
-      echo "GitHub CLI authentication is unavailable for this Codespace."
-      cat /tmp/hyouka-gh-auth.log || true
-      exit 1
-    fi
-  else
+if gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
+  gh auth status
+elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  export GH_TOKEN="${GITHUB_TOKEN}"
+  if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
     echo "GitHub CLI authentication is unavailable for this Codespace."
     cat /tmp/hyouka-gh-auth.log || true
     exit 1
   fi
+  gh auth status
+else
+  echo "GitHub CLI authentication is unavailable for this Codespace."
+  cat /tmp/hyouka-gh-auth.log || true
+  exit 1
 fi
-gh auth status
-fi
-gh auth status
-
 echo "== Start Xvfb for headless Krita =="
 if ! pgrep -f "Xvfb :99" >/dev/null 2>&1; then
   nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/tmp/hyouka-xvfb.log 2>&1 &
