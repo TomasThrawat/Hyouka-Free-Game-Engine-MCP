@@ -275,9 +275,6 @@ def native_start_project(args, cwd=None, timeout=120):
 
     if "--path" not in clean and "-p" not in clean:
         clean = ["--path", str(project_dir)] + clean
-    if "--display-driver" in clean and "x11" in clean and "--disable-vsync" in clean:
-        clean = [arg for arg in clean if arg != "--disable-vsync"]
-
     return native_run(clean, cwd, timeout, True)
 
 def native_invoke(tool_id, args, cwd=None, timeout=120, bg=False):
