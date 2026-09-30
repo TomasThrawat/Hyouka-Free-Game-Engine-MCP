@@ -57,7 +57,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           timeout 300s sudo apt-get update -o Acquire::Retries=3
-          timeout 300s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq xvfb weston
+          timeout 900s sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip python3 jq xvfb weston
 
       - name: Install Godot 4.7.2 .NET
         run: |
