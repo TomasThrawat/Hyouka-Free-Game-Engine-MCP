@@ -217,14 +217,7 @@ async function createHandler() {
       );
     }
 
-    registerRemoteMcpTools(
-      server,
-      remoteTools.filter(
-        (tool) =>
-          tool.provider.id !== "blender-dcc" && tool.provider.id !== "krita",
-      ),
-      used,
-    );
+    registerRemoteMcpTools(server, remoteTools, used);
   });
 }
 
