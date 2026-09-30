@@ -3,7 +3,6 @@ set -Eeuo pipefail
 
 BLENDER_BIN="/usr/local/bin/blender"
 DCC_SITE="/opt/dcc-mcp-python"
-KRITA_DIR="/opt/krita-mcp"
 KRITA_VENV="/opt/krita-mcp-venv"
 ROOT="/workspaces/Hyouka-Free-Game-Engine-MCP"
 
@@ -16,20 +15,32 @@ for pattern in "blender_bootstrap.py" "krita_mcp_http.py" "Xvfb :99"; do
 done
 sudo nginx -s stop 2>/dev/null || true
 
+echo "== Verify GitHub CLI authentication =="
+command -v gh >/dev/null 2>&1 || {
+  echo "GitHub CLI is required but was not installed."
+  exit 1
+}
+if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
+  echo "GitHub CLI is not authenticated inside this Codespace."
+  cat /tmp/hyouka-gh-auth.log || true
+  exit 1
+fi
+gh auth status
+
 echo "== Start Xvfb for headless Krita =="
 if ! pgrep -f "Xvfb :99" >/dev/null 2>&1; then
-  nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp > /tmp/hyouka-xvfb.log 2>&1 &
+  nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/tmp/hyouka-xvfb.log 2>&1 &
 fi
 export DISPLAY=:99
 
 echo "== Start headless Blender MCP =="
 if ! pgrep -f "blender.*blender_bootstrap.py" >/dev/null 2>&1; then
-  nohup env PYTHONPATH="${DCC_SITE}" "${BLENDER_BIN}" --background --python "${ROOT}/.devcontainer/blender_bootstrap.py" > /tmp/hyouka-blender-mcp.log 2>&1 &
+  nohup env PYTHONPATH="${DCC_SITE}" "${BLENDER_BIN}" --background --python "${ROOT}/.devcontainer/blender_bootstrap.py" >/tmp/hyouka-blender-mcp.log 2>&1 &
 fi
 
 echo "== Start Krita =="
 if ! pgrep -x "krita" >/dev/null 2>&1; then
-  nohup krita --nosplash > /tmp/hyouka-krita.log 2>&1 &
+  nohup krita --nosplash >/tmp/hyouka-krita.log 2>&1 &
 fi
 
 echo "== Wait for Krita plugin =="
@@ -42,17 +53,18 @@ for i in $(seq 1 120); do
   sleep 1
 done
 
-if [[ "$KRITA_READY" -ne 1 ]]; then
+if [[ "${KRITA_READY}" -ne 1 ]]; then
   echo "Krita plugin did not become healthy."
   sed -n '1,220p' /tmp/hyouka-krita.log || true
   exit 1
 fi
+
 echo "Krita plugin health passed:"
 cat /tmp/krita-health.json
 
 echo "== Start Krita Streamable HTTP MCP =="
 if ! pgrep -f "krita_mcp_http.py" >/dev/null 2>&1; then
-  nohup env KRITA_URL="http://127.0.0.1:5678" "${KRITA_VENV}/bin/python" "${ROOT}/.devcontainer/krita_mcp_http.py" > /tmp/hyouka-krita-mcp.log 2>&1 &
+  nohup env KRITA_URL="http://127.0.0.1:5678" "${KRITA_VENV}/bin/python" "${ROOT}/.devcontainer/krita_mcp_http.py" >/tmp/hyouka-krita-mcp.log 2>&1 &
 fi
 
 echo "== Wait for MCP processes =="
@@ -74,13 +86,13 @@ for i in $(seq 1 90); do
   sleep 1
 done
 
-if [[ "$BLENDER_READY" -ne 1 ]]; then
+if [[ "${BLENDER_READY}" -ne 1 ]]; then
   echo "Blender MCP internal port did not open."
   sed -n '1,260p' /tmp/hyouka-blender-mcp.log || true
   exit 1
 fi
 
-if [[ "$KRITA_MCP_READY" -ne 1 ]]; then
+if [[ "${KRITA_MCP_READY}" -ne 1 ]]; then
   echo "Krita MCP internal port did not open."
   sed -n '1,260p' /tmp/hyouka-krita-mcp.log || true
   exit 1
@@ -88,7 +100,7 @@ fi
 
 echo "== Configure protected reverse proxy =="
 sudo tee /tmp/hyouka-dcc-nginx.conf >/dev/null <<EOF
-worker_processes  1;
+worker_processes 1;
 pid /tmp/hyouka-dcc-nginx.pid;
 events {
   worker_connections 1024;
@@ -138,11 +150,42 @@ EOF
 sudo nginx -t -c /tmp/hyouka-dcc-nginx.conf
 sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
-echo "== Codespaces forwarding =="
-echo "Ports 9765/9797 are declared public in .devcontainer/devcontainer.json."
+echo "== Configure public Codespaces forwarding =="
+for attempt in $(seq 1 20); do
+  if gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" >/tmp/hyouka-ports-visibility.log 2>&1; then
+    break
+  fi
+  echo "Port visibility attempt $attempt/20 failed; retrying..."
+  tail -n 20 /tmp/hyouka-ports-visibility.log || true
+  if [[ "$attempt" -eq 20 ]]; then
+    echo "Unable to make DCC forwarded ports public."
+    cat /tmp/hyouka-ports-visibility.log || true
+    exit 1
+  fi
+  sleep 2
+done
+
+echo "== Verify public Codespaces forwarding =="
+PORTS_JSON="$(gh codespace ports -c "${CODESPACE_NAME}" --json sourcePort,visibility,browseUrl)"
+python3 -c '
+import json, sys
+ports = json.loads(sys.argv[1])
+expected = {9765, 9797}
+actual = {
+    int(p["sourcePort"]): p["visibility"]
+    for p in ports
+    if int(p["sourcePort"]) in expected
+}
+missing = expected - set(actual)
+bad = {port: value for port, value in actual.items() if value != "public"}
+if missing or bad:
+    raise SystemExit(
+        f"Port visibility verification failed: missing={sorted(missing)}, bad={bad}"
+    )
+for port in sorted(expected):
+    print(f"{port}: {actual[port]}")
+' "$PORTS_JSON"
 
 echo "DCC MCP runtime ready"
 echo "BLENDER_PUBLIC_URL=https://${CODESPACE_NAME}-9765.app.github.dev/mcp"
 echo "KRITA_PUBLIC_URL=https://${CODESPACE_NAME}-9797.app.github.dev/mcp"
-echo "BLENDER_INTERNAL=127.0.0.1:18765/mcp"
-echo "KRITA_INTERNAL=127.0.0.1:19797/mcp"
