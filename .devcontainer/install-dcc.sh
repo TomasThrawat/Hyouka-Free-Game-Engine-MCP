@@ -23,7 +23,7 @@ gh --version | head -n 1
 
 echo "== Install cloudflared =="
 CLOUDFLARED_VERSION="${CLOUDFLARED_VERSION:-2026.9.3}"
-curl -fsSL "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/${CLOUDFLARED_VERSION}" -o /tmp/cloudflared-release.json
+curl -fsSL --retry 8 --retry-delay 2 -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/${CLOUDFLARED_VERSION}" -o /tmp/cloudflared-release.json
 CLOUDFLARED_URL="$(python3 - <<'PY'
 import json
 with open("/tmp/cloudflared-release.json", "r", encoding="utf-8") as handle:
