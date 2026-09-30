@@ -71,12 +71,12 @@ echo "== Install Krita MCP =="
 sudo rm -rf "${KRITA_DIR}"
 sudo git clone --depth 1 https://github.com/nanayax3/krita-mcp.git "${KRITA_DIR}"
 
-python3 -m venv /opt/krita-mcp-venv
-/opt/krita-mcp-venv/bin/pip install --upgrade pip
+sudo python3 -m venv /opt/krita-mcp-venv
+sudo /opt/krita-mcp-venv/bin/pip install --upgrade pip
 if [[ -f "${KRITA_DIR}/requirements.txt" ]]; then
-  /opt/krita-mcp-venv/bin/pip install -r "${KRITA_DIR}/requirements.txt"
+  sudo /opt/krita-mcp-venv/bin/pip install -r "${KRITA_DIR}/requirements.txt"
 else
-  /opt/krita-mcp-venv/bin/pip install mcp httpx
+  sudo /opt/krita-mcp-venv/bin/pip install mcp httpx
 fi
 
 echo "== Install Krita plugin =="
