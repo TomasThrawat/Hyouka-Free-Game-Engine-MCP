@@ -5,7 +5,10 @@
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "forwardPorts": [9765, 9797],
+  "forwardPorts": [
+    9765,
+    9797
+  ],
   "portsAttributes": {
     "9765": {
       "label": "Blender MCP",
@@ -38,5 +41,6 @@
     }
   },
   "postCreateCommand": "bash .devcontainer/launch-dcc-background.sh",
-  "postStartCommand": "bash .devcontainer/launch-dcc-background.sh"
+  "postStartCommand": "bash .devcontainer/launch-dcc-background.sh",
+  "postAttachCommand": "bash .devcontainer/launch-dcc-background.sh"
 }
