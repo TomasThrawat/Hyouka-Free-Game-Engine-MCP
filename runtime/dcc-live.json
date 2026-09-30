@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "status": "offline",
+  "runtime": "github-codespaces-cloudflare-quick-tunnel",
+  "updatedAt": "2026-09-30T07:08:16.880Z",
+  "providers": {
+    "blender-dcc": {
+      "status": "offline",
+      "url": null
+    },
+    "krita": {
+      "status": "offline",
+      "url": null
+    }
+  }
+}

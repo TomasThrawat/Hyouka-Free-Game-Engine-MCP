@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -55,7 +55,9 @@
         "BLENDER_MCP_URL",
         "BLENDER_BRIDGE_URL"
       ],
-      "tokenEnv": "HYOUKA_BLENDER_MCP_TOKEN"
+      "tokenEnv": "HYOUKA_BLENDER_MCP_TOKEN",
+      "runtimeManifestUrl": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/dcc-live.json",
+      "runtimeManifestKey": "blender-dcc"
     },
     {
       "id": "krita",
@@ -79,7 +81,9 @@
       "urlEnvs": [
         "HYOUKA_KRITA_MCP_URL",
         "KRITA_MCP_URL"
-      ]
+      ],
+      "runtimeManifestUrl": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/dcc-live.json",
+      "runtimeManifestKey": "krita"
     },
     {
       "id": "godot-full-control-157",

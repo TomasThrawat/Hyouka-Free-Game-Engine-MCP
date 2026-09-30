@@ -8,6 +8,7 @@ ROOT="/workspaces/Hyouka-Free-Game-Engine-MCP"
 
 : "${HYOUKA_DCC_MCP_TOKEN:?HYOUKA_DCC_MCP_TOKEN must be available as a Codespaces secret}"
 : "${CODESPACE_NAME:?CODESPACE_NAME must be available inside the Codespace}"
+: "${GITHUB_TOKEN:?GITHUB_TOKEN must be available inside the Codespace}"
 
 echo "== Stop previous DCC processes =="
 for pattern in "blender_bootstrap.py" "krita_mcp_http.py" "Xvfb :99"; do
@@ -15,29 +16,11 @@ for pattern in "blender_bootstrap.py" "krita_mcp_http.py" "Xvfb :99"; do
 done
 sudo nginx -s stop 2>/dev/null || true
 
-echo "== Verify GitHub CLI authentication =="
-command -v gh >/dev/null 2>&1 || {
-  echo "GitHub CLI is required but was not installed."
-  exit 1
-}
-
-# Prefer the credential already authenticated in gh.
-# Only fall back to the Codespaces GITHUB_TOKEN when gh has no stored login.
-if gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
-  gh auth status
-elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  export GH_TOKEN="${GITHUB_TOKEN}"
-  if ! gh auth status >/tmp/hyouka-gh-auth.log 2>&1; then
-    echo "GitHub CLI authentication is unavailable for this Codespace."
-    cat /tmp/hyouka-gh-auth.log || true
-    exit 1
-  fi
-  gh auth status
-else
-  echo "GitHub CLI authentication is unavailable for this Codespace."
-  cat /tmp/hyouka-gh-auth.log || true
-  exit 1
-fi
+echo "== Verify Codespaces GitHub token =="
+case "${GITHUB_TOKEN}" in
+  "") echo "GITHUB_TOKEN is empty." >&2; exit 1 ;;
+  *) echo "GITHUB_TOKEN is available for runtime manifest publishing." ;;
+esac
 echo "== Start Xvfb for headless Krita =="
 if ! pgrep -f "Xvfb :99" >/dev/null 2>&1; then
   nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/tmp/hyouka-xvfb.log 2>&1 &
@@ -155,48 +138,162 @@ http {
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
   }
+  server {
+    listen 9888;
+    server_name _;
+
+    location /blender/ {
+      proxy_pass http://127.0.0.1:9765/;
+      proxy_http_version 1.1;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 3600s;
+      proxy_send_timeout 3600s;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /krita/ {
+      proxy_pass http://127.0.0.1:9797/;
+      proxy_http_version 1.1;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 3600s;
+      proxy_send_timeout 3600s;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+  }
 }
 EOF
 
 sudo nginx -t -c /tmp/hyouka-dcc-nginx.conf
 sudo nginx -c /tmp/hyouka-dcc-nginx.conf
 
-echo "== Configure public Codespaces forwarding =="
-for attempt in $(seq 1 20); do
-  if gh codespace ports visibility 9765:public 9797:public -c "${CODESPACE_NAME}" >/tmp/hyouka-ports-visibility.log 2>&1; then
+echo "== Start Cloudflare Quick Tunnel =="
+rm -f /tmp/hyouka-cloudflared.log
+nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:9888 >/tmp/hyouka-cloudflared.log 2>&1 &
+CLOUDFLARED_PID=$!
+echo "cloudflared pid=$CLOUDFLARED_PID"
+
+TUNNEL_URL=""
+for attempt in $(seq 1 60); do
+  TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\\.trycloudflare\\.com' /tmp/hyouka-cloudflared.log | head -1 || true)"
+  if [[ -n "$TUNNEL_URL" ]]; then
     break
   fi
-  echo "Port visibility attempt $attempt/20 failed; retrying..."
-  tail -n 20 /tmp/hyouka-ports-visibility.log || true
-  if [[ "$attempt" -eq 20 ]]; then
-    echo "Unable to make DCC forwarded ports public."
-    cat /tmp/hyouka-ports-visibility.log || true
+  if ! kill -0 "$CLOUDFLARED_PID" 2>/dev/null; then
+    echo "cloudflared exited before publishing a tunnel URL."
+    sed -n '1,220p' /tmp/hyouka-cloudflared.log || true
     exit 1
   fi
   sleep 2
 done
 
-echo "== Verify public Codespaces forwarding =="
-PORTS_JSON="$(gh codespace ports -c "${CODESPACE_NAME}" --json sourcePort,visibility,browseUrl)"
-python3 -c '
-import json, sys
-ports = json.loads(sys.argv[1])
-expected = {9765, 9797}
-actual = {
-    int(p["sourcePort"]): p["visibility"]
-    for p in ports
-    if int(p["sourcePort"]) in expected
-}
-missing = expected - set(actual)
-bad = {port: value for port, value in actual.items() if value != "public"}
-if missing or bad:
-    raise SystemExit(
-        f"Port visibility verification failed: missing={sorted(missing)}, bad={bad}"
-    )
-for port in sorted(expected):
-    print(f"{port}: {actual[port]}")
-' "$PORTS_JSON"
+if [[ -z "$TUNNEL_URL" ]]; then
+  echo "Cloudflare Quick Tunnel URL was not published."
+  sed -n '1,220p' /tmp/hyouka-cloudflared.log || true
+  exit 1
+fi
 
-echo "DCC MCP runtime ready"
-echo "BLENDER_PUBLIC_URL=https://${CODESPACE_NAME}-9765.app.github.dev/mcp"
-echo "KRITA_PUBLIC_URL=https://${CODESPACE_NAME}-9797.app.github.dev/mcp"
+echo "Cloudflare tunnel: $TUNNEL_URL"
+
+echo "== Verify protected tunneled MCP endpoints =="
+for path in "/blender/mcp" "/krita/mcp"; do
+  CODE="$(curl -sS -o /tmp/hyouka-tunnel-probe.json -w '%{http_code}' \
+    -H "Authorization: Bearer ${HYOUKA_DCC_MCP_TOKEN}" \
+    -H 'Accept: application/json, text/event-stream' \
+    "${TUNNEL_URL}${path}" || true)"
+  case "$CODE" in
+    200|400|405)
+      echo "${path}: HTTP $CODE"
+      ;;
+    *)
+      echo "${path}: unexpected HTTP $CODE"
+      cat /tmp/hyouka-tunnel-probe.json 2>/dev/null || true
+      exit 1
+      ;;
+  esac
+done
+
+echo "== Publish live DCC runtime manifest =="
+cat >/tmp/dcc-live.json <<EOF
+{
+  "version": "1.0.0",
+  "status": "online",
+  "runtime": "github-codespaces-cloudflare-quick-tunnel",
+  "updatedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "providers": {
+    "blender-dcc": {
+      "status": "online",
+      "url": "${TUNNEL_URL}/blender/mcp"
+    },
+    "krita": {
+      "status": "online",
+      "url": "${TUNNEL_URL}/krita/mcp"
+    }
+  }
+}
+EOF
+
+MANIFEST_API="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/runtime/dcc-live.json"
+MANIFEST_B64="$(base64 -w0 /tmp/dcc-live.json)"
+PUBLISHED=0
+
+for attempt in $(seq 1 8); do
+  CURRENT_JSON="$(curl -fsS \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "${MANIFEST_API}?ref=main" || true)"
+  CURRENT_SHA="$(printf '%s' "$CURRENT_JSON" | jq -r '.sha // empty')"
+
+  if [[ -n "$CURRENT_SHA" ]]; then
+    PAYLOAD="$(jq -n \
+      --arg message "chore: publish live DCC MCP runtime manifest [skip ci]" \
+      --arg content "$MANIFEST_B64" \
+      --arg sha "$CURRENT_SHA" \
+      '{message:$message,content:$content,sha:$sha,branch:"main"}')"
+  else
+    PAYLOAD="$(jq -n \
+      --arg message "chore: publish live DCC MCP runtime manifest [skip ci]" \
+      --arg content "$MANIFEST_B64" \
+      '{message:$message,content:$content,branch:"main"}')"
+  fi
+
+  HTTP_CODE="$(curl -sS \
+    -o /tmp/dcc-live-update.json \
+    -w '%{http_code}' \
+    -X PUT \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    -H 'Content-Type: application/json' \
+    --data "$PAYLOAD" \
+    "${MANIFEST_API}")"
+
+  case "$HTTP_CODE" in
+    200|201)
+      PUBLISHED=1
+      break
+      ;;
+    409|422)
+      echo "Manifest update conflict on attempt ${attempt}; retrying..."
+      sleep 2
+      ;;
+    *)
+      echo "Manifest update failed with HTTP ${HTTP_CODE}."
+      cat /tmp/dcc-live-update.json || true
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$PUBLISHED" -ne 1 ]]; then
+  echo "Live DCC manifest could not be published."
+  exit 1
+fi
+
+echo "DCC live manifest published successfully."
+echo "BLENDER_PUBLIC_URL=${TUNNEL_URL}/blender/mcp"
+echo "KRITA_PUBLIC_URL=${TUNNEL_URL}/krita/mcp"

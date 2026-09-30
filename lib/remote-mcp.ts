@@ -19,6 +19,8 @@ export type RemoteMcpProvider = {
   source?: string;
   license?: string;
   capabilities?: string[];
+  runtimeManifestUrl?: string;
+  runtimeManifestKey?: string;
 };
 
 export type RemoteMcpTool = {
@@ -40,6 +42,18 @@ type CapabilityMatrix = {
   domains: Array<Record<string, unknown>>;
 };
 
+type RuntimeManifestEntry = {
+  url?: string | null;
+  status?: string | null;
+};
+
+type RuntimeManifest = {
+  version?: string;
+  updatedAt?: string;
+  status?: string;
+  providers?: Record<string, RuntimeManifestEntry>;
+};
+
 type ConnectedProvider = {
   provider: RemoteMcpProvider;
   client: Client;
@@ -56,6 +70,9 @@ const DEFAULT_REGISTRY_URL =
 const DEFAULT_CAPABILITY_MATRIX_URL =
   "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/free-game-capability-matrix.json";
 
+const DEFAULT_DCC_LIVE_MANIFEST_URL =
+  "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/dcc-live.json";
+
 const registryCache: { expiresAt: number; registry: Registry } | null = null;
 const capabilityCache: { expiresAt: number; matrix: CapabilityMatrix } | null = null;
 
@@ -66,6 +83,11 @@ let cachedCapabilities: { expiresAt: number; matrix: CapabilityMatrix } | null =
 const remoteCache = new Map<
   string,
   { expiresAt: number; entry?: ConnectedProvider; error?: string }
+>();
+
+const runtimeManifestCache = new Map<
+  string,
+  { expiresAt: number; manifest: RuntimeManifest }
 >();
 
 const DISCOVERY_TTL_MS = 15_000;
@@ -153,6 +175,21 @@ async function loadCapabilityMatrix(): Promise<CapabilityMatrix> {
   return matrix;
 }
 
+function normalizeResolvedUrl(
+  provider: RemoteMcpProvider,
+  raw: string,
+): string {
+  const normalized = raw.trim().replace(/\/$/, "");
+  if (!provider.urlSuffix) return normalized;
+
+  const suffix = provider.urlSuffix.startsWith("/")
+    ? provider.urlSuffix
+    : "/" + provider.urlSuffix;
+
+  if (normalized.endsWith(suffix)) return normalized;
+  return normalized + suffix;
+}
+
 function resolveUrl(provider: RemoteMcpProvider): string | null {
   const envKeys = Array.from(
     new Set(
@@ -180,16 +217,68 @@ function resolveUrl(provider: RemoteMcpProvider): string | null {
   }
 
   if (!raw) return null;
+  return normalizeResolvedUrl(provider, raw);
+}
 
-  const normalized = raw.replace(/\/$/, "");
-  if (!provider.urlSuffix) return normalized;
+async function loadRuntimeManifest(
+  provider: RemoteMcpProvider,
+): Promise<RuntimeManifest | null> {
+  const manifestUrl =
+    provider.runtimeManifestUrl?.trim() || DEFAULT_DCC_LIVE_MANIFEST_URL;
+  const t = now();
+  const cached = runtimeManifestCache.get(manifestUrl);
+  if (cached && cached.expiresAt > t) {
+    return cached.manifest;
+  }
 
-  const suffix = provider.urlSuffix.startsWith("/")
-    ? provider.urlSuffix
-    : "/" + provider.urlSuffix;
+  const response = await fetch(manifestUrl + "?t=" + t, {
+    cache: "no-store",
+    headers: {
+      "cache-control": "no-cache",
+      pragma: "no-cache",
+    },
+  });
 
-  if (normalized.endsWith(suffix)) return normalized;
-  return normalized + suffix;
+  if (!response.ok) {
+    throw new Error(
+      "Runtime manifest fetch failed: HTTP " + response.status,
+    );
+  }
+
+  const value = (await response.json()) as RuntimeManifest;
+  const manifest =
+    value &&
+    typeof value === "object" &&
+    value.providers &&
+    typeof value.providers === "object"
+      ? value
+      : { version: "invalid", providers: {} };
+
+  runtimeManifestCache.set(manifestUrl, {
+    expiresAt: t + DISCOVERY_TTL_MS,
+    manifest,
+  });
+  return manifest;
+}
+
+async function resolveUrlAsync(
+  provider: RemoteMcpProvider,
+): Promise<string | null> {
+  if (provider.runtimeManifestUrl) {
+    try {
+      const manifest = await loadRuntimeManifest(provider);
+      const key = provider.runtimeManifestKey?.trim() || provider.id;
+      const entry = manifest?.providers?.[key];
+      if (entry?.url && entry.status !== "offline") {
+        return normalizeResolvedUrl(provider, entry.url);
+      }
+      return null;
+    } catch {
+      return resolveUrl(provider);
+    }
+  }
+
+  return resolveUrl(provider);
 }
 
 function bearerToken(provider: RemoteMcpProvider): string | undefined {
@@ -257,16 +346,19 @@ async function connectProvider(
 async function getConnectedProviders(): Promise<ConnectedProvider[]> {
   const registry = await loadRegistry();
 
-  const candidates = registry.providers
-    .filter((provider) => provider.enabled !== false)
-    .map((provider) => ({
-      provider,
-      url: resolveUrl(provider),
-    }))
-    .filter(
-      (item): item is { provider: RemoteMcpProvider; url: string } =>
-        Boolean(item.url),
-    );
+  const candidates = (
+    await Promise.all(
+      registry.providers
+        .filter((provider) => provider.enabled !== false)
+        .map(async (provider) => ({
+          provider,
+          url: await resolveUrlAsync(provider),
+        })),
+    )
+  ).filter(
+    (item): item is { provider: RemoteMcpProvider; url: string } =>
+      Boolean(item.url),
+  );
 
   const t = now();
   const results = await Promise.all(
@@ -334,6 +426,15 @@ export async function remoteMcpToolInventory() {
   const entries = await getConnectedProviders();
   const byId = new Map(entries.map((entry) => [entry.provider.id, entry]));
 
+  const resolvedUrls = new Map(
+    await Promise.all(
+      registry.providers.map(async (provider) => [
+        provider.id,
+        await resolveUrlAsync(provider),
+      ] as const),
+    ),
+  );
+
   const providers = registry.providers.map((provider) => {
     const entry = byId.get(provider.id);
     const cached = remoteCache.get(provider.id);
@@ -341,7 +442,7 @@ export async function remoteMcpToolInventory() {
       id: provider.id,
       name: provider.name,
       source: provider.source ?? null,
-      configured: Boolean(resolveUrl(provider)),
+      configured: Boolean(resolvedUrls.get(provider.id)),
       authConfigured: Boolean(bearerToken(provider)),
       connected: Boolean(entry),
       toolCount: entry?.tools.length ?? 0,
@@ -444,8 +545,17 @@ export async function remoteMcpStatus() {
     await getConnectedProviders();
     const registry = await loadRegistry();
 
+    const resolvedUrls = new Map(
+      await Promise.all(
+        registry.providers.map(async (provider) => [
+          provider.id,
+          await resolveUrlAsync(provider),
+        ] as const),
+      ),
+    );
+
     const statuses = registry.providers.map((provider) => {
-      const url = resolveUrl(provider);
+      const url = resolvedUrls.get(provider.id);
       const cached = remoteCache.get(provider.id);
 
       return {

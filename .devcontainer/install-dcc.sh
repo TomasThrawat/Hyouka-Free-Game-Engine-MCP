@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "== Install OS dependencies =="
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
-  ca-certificates curl git gh nginx \
+  ca-certificates curl git gh nginx jq \
   python3 python3-pip python3-venv \
   xz-utils tar gzip unzip \
   xvfb xauth x11-utils \
@@ -20,6 +20,30 @@ sudo apt-get install -y --no-install-recommends \
 
 echo "== Verify GitHub CLI =="
 gh --version | head -n 1
+
+echo "== Install cloudflared =="
+CLOUDFLARED_VERSION="${CLOUDFLARED_VERSION:-2026.9.3}"
+curl -fsSL "https://api.github.com/repos/cloudflare/cloudflared/releases/tags/${CLOUDFLARED_VERSION}" -o /tmp/cloudflared-release.json
+CLOUDFLARED_URL="$(python3 - <<'PY'
+import json
+with open("/tmp/cloudflared-release.json", "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+print(next(asset["browser_download_url"] for asset in data["assets"] if asset["name"] == "cloudflared-linux-amd64"))
+PY
+)"
+CLOUDFLARED_DIGEST="$(python3 - <<'PY'
+import json
+with open("/tmp/cloudflared-release.json", "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+digest = next(asset.get("digest", "") for asset in data["assets"] if asset["name"] == "cloudflared-linux-amd64")
+print(digest.split(":", 1)[-1])
+PY
+)"
+test -n "$CLOUDFLARED_DIGEST"
+curl -fL --retry 8 --retry-delay 2 -o /tmp/cloudflared "$CLOUDFLARED_URL"
+printf '%s  /tmp/cloudflared\n' "$CLOUDFLARED_DIGEST" | sha256sum -c -
+sudo install -Dm755 /tmp/cloudflared /usr/local/bin/cloudflared
+cloudflared --version
 
 echo "== Install Blender ${BLENDER_VERSION} =="
 if [[ ! -x "${BLENDER_DIR}/blender" ]]; then
