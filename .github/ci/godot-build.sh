@@ -14,6 +14,43 @@ npm run build
 echo "== Dependency audit =="
 npm audit --omit=dev --audit-level=high
 
+echo "== Validate unified remote MCP registry =="
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+p = Path("runtime/free-mcp-providers.json")
+registry = json.loads(p.read_text())
+providers = registry.get("providers", [])
+by_id = {provider.get("id"): provider for provider in providers}
+
+assert by_id.get("blender-mcp"), "Missing blender-mcp provider"
+assert by_id.get("krita-mcp"), "Missing krita-mcp provider"
+
+for provider_id in ("blender-mcp", "krita-mcp"):
+    provider = by_id[provider_id]
+    assert provider.get("enabled") is True
+    assert provider.get("dynamicDiscovery") is True
+    assert provider.get("discoveryProtocol") == "MCP tools/list"
+    assert provider.get("urlEnv"), f"{provider_id} missing urlEnv"
+    assert "runtimeManifestUrl" not in provider
+    assert "runtimeManifestKey" not in provider
+
+print("Unified remote MCP registry validated: Blender MCP + Krita MCP are ordinary remote providers.")
+PY
+
+echo "== Validate unified MCP route wiring =="
+python3 - <<'PY'
+from pathlib import Path
+
+route = Path("app/api/mcp/route.ts").read_text()
+assert "discoverRemoteMcpTools" in route
+assert "registerRemoteMcpTools" in route
+assert "remoteMcpToolInventory" in route
+assert '"godot_mcp_inventory"' in route
+print("Unified MCP route validated: Godot + remote discovery + unified inventory tool.")
+PY
+
 echo "== Validate official Godot CLI manifest =="
 python3 - <<'PY'
 import json
@@ -52,10 +89,9 @@ curl -fL --retry 8 -o /tmp/godot.zip https://github.com/godotengine/godot/releas
 curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
 
 echo "== Verify Godot checksum =="
-CHECKSUM=$(grep -E '[[:space:]]Godot_v4\.7\.2-stable_mono_linux_x86_64\.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
+CHECKSUM=$(grep -E '[[:space:]]Godot_v4.7.2-stable_mono_linux_x86_64.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
 test -n "$CHECKSUM"
-printf '%s  /tmp/godot.zip
-' "$CHECKSUM" | sha512sum -c -
+printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
 
 echo "== Verify Godot .NET runtime =="
 rm -rf /tmp/godot

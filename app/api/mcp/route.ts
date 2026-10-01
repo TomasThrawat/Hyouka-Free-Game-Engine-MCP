@@ -8,6 +8,7 @@ import * as z from "zod/v4";
 import {
   discoverRemoteMcpTools,
   registerRemoteMcpTools,
+  remoteMcpToolInventory,
 } from "../../../lib/remote-mcp";
 
 const CONFIG =
@@ -197,6 +198,23 @@ async function createHandler() {
         description: "Check the live Godot runtime.",
       },
       async () => out(await call("/health")),
+    );
+
+    server.registerTool(
+      "godot_mcp_inventory",
+      {
+        title: "Unified MCP inventory",
+        description:
+          "Return one inventory for the Godot bridge plus all configured remote MCP providers, including Blender MCP and Krita MCP connection state and dynamically discovered tool counts.",
+      },
+      async () => {
+        const remote = await remoteMcpToolInventory();
+        return out({
+          godotToolCount: inventory.length,
+          remoteMcp: remote,
+          unifiedToolCount: inventory.length + remote.totalToolCount,
+        });
+      },
     );
 
     for (const tool of inventory) {
