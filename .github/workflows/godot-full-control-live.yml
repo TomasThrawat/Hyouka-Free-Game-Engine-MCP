@@ -186,8 +186,7 @@ jobs:
           done
 
           test "$READY_TUNNEL" -eq 1
-          printf '%s/mcp
-' "$URL" >/tmp/godot-full-control-url
+          printf '%s/mcp\n' "$URL" >/tmp/godot-full-control-url
           echo "GODOT_FULL_CONTROL_URL=$URL/mcp"
 
       - name: Publish live full-control manifest
