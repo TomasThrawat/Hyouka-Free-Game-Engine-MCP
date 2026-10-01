@@ -32,16 +32,16 @@ for provider_id in ("blender-mcp", "krita-mcp"):
     assert provider.get("enabled") is True
     assert provider.get("dynamicDiscovery") is True
     assert provider.get("discoveryProtocol") == "MCP tools/list"
-    assert provider.get("urlEnv"), f"{provider_id} missing urlEnv"
-    assert provider.get("tokenEnv"), f"{provider_id} missing tokenEnv"
-    assert "urlFile" not in provider
-    assert "urlFileKey" not in provider
-    assert "authType" not in provider
+    assert provider.get("urlFile"), f"{provider_id} missing urlFile"
+    assert provider.get("urlFileKey") == "url", f"{provider_id} missing urlFileKey=url"
+    assert provider.get("authType") == "vercel-oidc", f"{provider_id} missing authType=vercel-oidc"
+    assert "urlEnv" not in provider, f"{provider_id} still declares obsolete urlEnv"
+    assert "tokenEnv" not in provider, f"{provider_id} still declares obsolete tokenEnv"
     assert "runtimeManifestUrl" not in provider
     assert "runtimeManifestKey" not in provider
 
 assert not any(provider.get("id") in {"blender-dcc", "krita"} for provider in providers)
-print("Unified remote MCP registry validated: Blender MCP + Krita MCP are ordinary remote providers.")
+print("Unified remote MCP registry validated: Blender MCP + Krita MCP use dynamic endpoint manifests with Vercel OIDC.")
 PY
 
 echo "== Validate unified MCP route wiring =="
@@ -100,8 +100,7 @@ curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/
 echo "== Verify Godot checksum =="
 CHECKSUM=$(grep -E '[[:space:]]Godot_v4.7.2-stable_mono_linux_x86_64.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
 test -n "$CHECKSUM"
-printf '%s  /tmp/godot.zip
-' "$CHECKSUM" | sha512sum -c -
+printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
 
 echo "== Verify Godot .NET runtime =="
 rm -rf /tmp/godot
