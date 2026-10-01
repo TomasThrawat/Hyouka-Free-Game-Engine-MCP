@@ -5,6 +5,7 @@ import { createMcpHandler } from "mcp-handler";
 import { fromJsonSchema } from "@modelcontextprotocol/server";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
+import { getVercelOidcToken } from "@vercel/oidc";
 import {
   discoverRemoteMcpTools,
   registerRemoteMcpTools,
