@@ -1,0 +1,233 @@
+name: Godot Full Control Live MCP
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/godot-full-control-live.yml"
+      - "godot/oidc_proxy.py"
+      - "godot/full-control-supervisor.sh"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: godot-full-control-live
+  cancel-in-progress: true
+
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install runtime dependencies
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             curl unzip openssh-client python3-venv xvfb xauth jq             libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
+          sudo rm -rf /var/lib/apt/lists/*
+
+      - name: Download Godot 4.7.2 .NET
+        run: |
+          set -e
+          mkdir -p /tmp/godot
+          curl -fL --retry 8             -o /tmp/godot.zip             https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
+          curl -fL --retry 8             -o /tmp/SHA512-SUMS.txt             https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
+          CHECKSUM="$(grep -E '[[:space:]]Godot_v4.7.2-stable_mono_linux_x86_64.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')"
+          test -n "$CHECKSUM"
+          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+          unzip -oq /tmp/godot.zip -d /tmp/godot
+          GODOT_DIR="$(find /tmp/godot -maxdepth 1 -type d -name 'Godot_v4.7.2-stable_mono_linux_x86_64' -print -quit)"
+          test -n "$GODOT_DIR"
+          GODOT_BIN="$GODOT_DIR/Godot_v4.7.2-stable_mono_linux_x86_64"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Prepare full-control server
+        run: |
+          set -e
+          python3 -m venv /tmp/godot-full-control-venv
+          /tmp/godot-full-control-venv/bin/python -m pip install --upgrade pip
+          /tmp/godot-full-control-venv/bin/pip install             "aiohttp>=3.11,<4" "PyJWT[crypto]>=2.9,<3"
+          rm -rf /tmp/godot-full-control
+          git clone --depth 1 https://github.com/Fulviuus/godot-mcp.git /tmp/godot-full-control
+          cd /tmp/godot-full-control
+          npm ci
+          npm run build
+          test -s dist/index.js
+          node dist/index.js --help >/tmp/godot-full-control-help.txt
+          grep -q -- "--transport" /tmp/godot-full-control-help.txt
+
+      - name: Start display
+        run: |
+          set -e
+          nohup Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset             >/tmp/godot-full-control-xvfb.log 2>&1 &
+          echo $! >/tmp/godot-full-control-xvfb.pid
+          for i in $(seq 1 30); do
+            test -S /tmp/.X11-unix/X99 && break
+            sleep 1
+          done
+          test -S /tmp/.X11-unix/X99
+
+      - name: Start full-control MCP server
+        run: |
+          set -e
+          nohup env             DISPLAY=:99             LIBGL_ALWAYS_SOFTWARE=1             GODOT_PROJECT_ROOT="$GITHUB_WORKSPACE"             GODOT_BIN="$GODOT_BIN"             GODOT_PATH="$GODOT_BIN"             GODOT_MCP_MONO=1             GODOT_MCP_ADVANCED=1             GODOT_MCP_LOG_LEVEL=info             node /tmp/godot-full-control/dist/index.js             --transport http --host 127.0.0.1 --port 9766             >/tmp/godot-full-control.log 2>&1 &
+          PID=$!
+          echo "$PID" >/tmp/godot-full-control.pid
+          READY=0
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 5 http://127.0.0.1:9766/health >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              cat /tmp/godot-full-control.log
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$READY" -eq 1
+          node <<'NODE'
+          const http=require("http");
+          const body=JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}});
+          const req=http.request({
+            host:"127.0.0.1",port:9766,path:"/mcp",method:"POST",
+            headers:{
+              "Content-Type":"application/json",
+              "Accept":"application/json, text/event-stream",
+              "Content-Length":Buffer.byteLength(body),
+              "Mcp-Protocol-Version":"2025-03-26"
+            }
+          },res=>{
+            let t="";
+            res.on("data",c=>t+=c);
+            res.on("end",()=>{
+              let tools=null;
+              for(const line of t.split(/\n/)){
+                if(line.startsWith("data: ")){
+                  try{
+                    const obj=JSON.parse(line.slice(6));
+                    if(obj.result?.tools) tools=obj.result.tools;
+                  }catch{}
+                }
+              }
+              if(!tools){
+                try{tools=JSON.parse(t).result.tools}catch{}
+              }
+              const count=tools ? tools.length : 0;
+              console.log("GODOT_FULL_CONTROL_TOOLS="+count);
+              process.exitCode=count >= 180 ? 0 : 1;
+            });
+          });
+          req.on("error",e=>{console.error(e);process.exitCode=1});
+          req.write(body);
+          req.end();
+          NODE
+
+      - name: Start authenticated public tunnel
+        run: |
+          set -e
+          nohup env             PORT=10002             UPSTREAM_URL=http://127.0.0.1:9766             /tmp/godot-full-control-venv/bin/python godot/oidc_proxy.py             >/tmp/godot-full-control-proxy.log 2>&1 &
+          PROXY_PID=$!
+          echo "$PROXY_PID" >/tmp/godot-full-control-proxy.pid
+          READY=0
+          for i in $(seq 1 60); do
+            STATUS="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}'               -X POST http://127.0.0.1:10002/mcp               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
+            if test "$STATUS" = "401"; then READY=1; break; fi
+            if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+              cat /tmp/godot-full-control-proxy.log
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$READY" -eq 1
+          rm -f /tmp/godot-full-control-url
+          nohup bash godot/full-control-supervisor.sh             >/tmp/godot-full-control-supervisor.log 2>&1 &
+          SUPERVISOR_PID=$!
+          echo "$SUPERVISOR_PID" >/tmp/godot-full-control-supervisor.pid
+          for i in $(seq 1 90); do
+            if test -s /tmp/godot-full-control-url; then break; fi
+            if ! kill -0 "$SUPERVISOR_PID" 2>/dev/null; then
+              cat /tmp/godot-full-control-supervisor.log
+              exit 1
+            fi
+            sleep 2
+          done
+          test -s /tmp/godot-full-control-url
+          echo "GODOT_FULL_CONTROL_URL=$(cat /tmp/godot-full-control-url)"
+
+      - name: Publish live full-control manifest
+        run: |
+          set -e
+          URL="$(cat /tmp/godot-full-control-url)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          jq -n --arg url "$URL" --arg run "$GITHUB_RUN_ID"             '{status:"ok",engine:"Godot Full Control",url:$url,runtime:"Fulviuus/godot-mcp HTTP",source:"https://github.com/Fulviuus/godot-mcp",ownerRunId:$run}'             > runtime/godot-full-control-bridge.json
+          git add runtime/godot-full-control-bridge.json
+          git commit -m "chore: publish live Godot full-control endpoint [skip ci]"
+          git push origin HEAD:main
+          touch /tmp/godot-full-control-published
+
+      - name: Verify public auth gate
+        run: |
+          set -e
+          URL="$(cat /tmp/godot-full-control-url)"
+          STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}'             -X POST "$URL/mcp"             -H 'Content-Type: application/json'             -H 'Accept: application/json, text/event-stream'             -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
+          test "$STATUS" = "401"
+          echo "GODOT_FULL_CONTROL_PUBLIC_AUTH_GATE=$STATUS"
+
+      - name: Verify read-only project info locally
+        run: |
+          set -e
+          node <<'NODE'
+          const http=require("http");
+          const body=JSON.stringify({
+            jsonrpc:"2.0",id:2,method:"tools/call",
+            params:{name:"godot_project_info",arguments:{}}
+          });
+          const req=http.request({
+            host:"127.0.0.1",port:9766,path:"/mcp",method:"POST",
+            headers:{
+              "Content-Type":"application/json",
+              "Accept":"application/json, text/event-stream",
+              "Content-Length":Buffer.byteLength(body),
+              "Mcp-Protocol-Version":"2025-03-26"
+            }
+          },res=>{
+            let t="";
+            res.on("data",c=>t+=c);
+            res.on("end",()=>{
+              console.log("GODOT_FULL_CONTROL_PROJECT_INFO_HTTP="+res.statusCode);
+              console.log(t.slice(0,3000));
+              process.exitCode = res.statusCode === 200 ? 0 : 1;
+            });
+          });
+          req.on("error",e=>{console.error(e);process.exitCode=1});
+          req.write(body);
+          req.end();
+          NODE
+
+      - name: Keep full-control runtime alive
+        run: |
+          set -e
+          while true; do
+            kill -0 "$(cat /tmp/godot-full-control.pid)"
+            kill -0 "$(cat /tmp/godot-full-control-proxy.pid)"
+            kill -0 "$(cat /tmp/godot-full-control-supervisor.pid)"
+            STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}'               -X POST "$(cat /tmp/godot-full-control-url)/mcp"               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"keepalive","version":"1"}}}' || true)"
+            test "$STATUS" = "401"
+            sleep 30
+          done
