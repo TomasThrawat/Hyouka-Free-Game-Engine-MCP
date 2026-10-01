@@ -161,7 +161,7 @@ jobs:
           }
 
           rm -f /tmp/godot-full-control-url /tmp/godot-full-control-tunnel.log
-          nohup ssh             -o StrictHostKeyChecking=no             -o UserKnownHostsFile=/dev/null             -o LogLevel=ERROR             -o ExitOnForwardFailure=yes             -o ServerAliveInterval=20             -o ServerAliveCountMax=3             -R 80:127.0.0.1:18081             nokey@localhost.run             >/tmp/godot-full-control-tunnel.log 2>&1 &
+          nohup ssh             -NT             -o StrictHostKeyChecking=no             -o UserKnownHostsFile=/dev/null             -o LogLevel=ERROR             -o ExitOnForwardFailure=yes             -o ConnectTimeout=15             -o ServerAliveInterval=20             -o ServerAliveCountMax=3             -R 80:127.0.0.1:18081             nokey@localhost.run             >/tmp/godot-full-control-tunnel.log 2>&1 &
           TUNNEL_PID=$!
           echo "$TUNNEL_PID" >/tmp/godot-full-control-tunnel.pid
 
@@ -170,7 +170,7 @@ jobs:
           for i in $(seq 1 90); do
             URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.lhr\.life' /tmp/godot-full-control-tunnel.log | tail -1 || true)"
             if test -n "$URL"; then
-              STATUS="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}'                 -X POST "$URL/mcp"                 -H 'Content-Type: application/json'                 -H 'Accept: application/json, text/event-stream'                 -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
+              STATUS="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}'                 -X POST "$URL/mcp"                 -H 'Content-Type: application/json'                 -H 'Accept: application/json, text/event-stream'                 -H 'Mcp-Protocol-Version: 2025-03-26'                 -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
               if test "$STATUS" = "401"; then
                 READY_TUNNEL=1
                 break
