@@ -41,18 +41,20 @@ jobs:
       - name: Download Godot 4.7.2 .NET
         run: |
           set -e
+          rm -rf /tmp/godot
           mkdir -p /tmp/godot
           curl -fL --retry 8             -o /tmp/godot.zip             https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_linux_x86_64.zip
           curl -fL --retry 8             -o /tmp/SHA512-SUMS.txt             https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
           CHECKSUM="$(grep -E '[[:space:]]Godot_v4.7.2-stable_mono_linux_x86_64.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')"
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
           unzip -oq /tmp/godot.zip -d /tmp/godot
-          GODOT_DIR="$(find /tmp/godot -maxdepth 1 -type d -name 'Godot_v4.7.2-stable_mono_linux_x86_64' -print -quit)"
-          test -n "$GODOT_DIR"
-          GODOT_BIN="$GODOT_DIR/Godot_v4.7.2-stable_mono_linux_x86_64"
+          GODOT_BIN="$(find /tmp/godot -maxdepth 3 -type f -name 'Godot_v4.7.2-stable_mono_linux*' -print -quit)"
+          test -n "$GODOT_BIN"
           chmod +x "$GODOT_BIN"
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          echo "Godot binary: $GODOT_BIN"
           "$GODOT_BIN" --version
 
       - name: Prepare full-control server
@@ -195,11 +197,16 @@ jobs:
           node <<'NODE'
           const http=require("http");
           const body=JSON.stringify({
-            jsonrpc:"2.0",id:2,method:"tools/call",
+            jsonrpc:"2.0",
+            id:2,
+            method:"tools/call",
             params:{name:"godot_project_info",arguments:{}}
           });
           const req=http.request({
-            host:"127.0.0.1",port:9766,path:"/mcp",method:"POST",
+            host:"127.0.0.1",
+            port:9766,
+            path:"/mcp",
+            method:"POST",
             headers:{
               "Content-Type":"application/json",
               "Accept":"application/json, text/event-stream",
