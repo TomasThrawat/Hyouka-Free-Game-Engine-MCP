@@ -48,7 +48,10 @@
         "glb-export"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-DCC-Remote-MCP/main/runtime/blender-endpoint.json",
+      "urlFileKey": "url",
+      "authType": "vercel-oidc"
     },
     {
       "id": "krita-mcp",
@@ -69,7 +72,10 @@
         "texture-source-art"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-DCC-Remote-MCP/main/runtime/krita-endpoint.json",
+      "urlFileKey": "url",
+      "authType": "vercel-oidc"
     },
     {
       "id": "godot-full-control-157",
