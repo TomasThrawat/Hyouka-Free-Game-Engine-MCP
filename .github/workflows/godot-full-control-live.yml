@@ -1,14 +1,13 @@
 name: Godot Full Control Live MCP
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: ["main"]
     paths:
       - ".github/workflows/godot-full-control-live.yml"
       - "godot/oidc_proxy.py"
       - "godot/full-control-supervisor.sh"
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -48,8 +47,7 @@ jobs:
           curl -fL --retry 8             -o /tmp/SHA512-SUMS.txt             https://github.com/godotengine/godot/releases/download/4.7.2-stable/SHA512-SUMS.txt
           CHECKSUM="$(grep -E '[[:space:]]Godot_v4.7.2-stable_mono_linux_x86_64.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')"
           test -n "$CHECKSUM"
-          printf '%s  /tmp/godot.zip
-' "$CHECKSUM" | sha512sum -c -
+          printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
           unzip -oq /tmp/godot.zip -d /tmp/godot
           GODOT_BIN="$(find /tmp/godot -maxdepth 3 -type f -name 'Godot_v4.7.2-stable_mono_linux*' -print -quit)"
           test -n "$GODOT_BIN"
