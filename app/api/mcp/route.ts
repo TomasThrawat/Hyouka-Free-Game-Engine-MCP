@@ -240,7 +240,8 @@ async function createHandler(vercelOidcToken?: string) {
 }
 
 async function handler(req: Request) {
-  const mcp = await createHandler(req.headers.get("x-vercel-oidc-token") ?? undefined);
+  const token = req.headers.get("x-vercel-oidc-token")?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim() || undefined;
+  const mcp = await createHandler(token);
   return mcp(req);
 }
 
