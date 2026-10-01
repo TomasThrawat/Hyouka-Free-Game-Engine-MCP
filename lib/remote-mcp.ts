@@ -14,7 +14,10 @@ export type RemoteMcpProvider = {
   urlEnvFallback?: string;
   urlEnvs?: string[];
   urlSuffix?: string;
+  urlFile?: string;
+  urlFileKey?: string;
   tokenEnv?: string;
+  authType?: "bearer-env" | "vercel-oidc";
   enabled?: boolean;
   source?: string;
   license?: string;
@@ -71,6 +74,12 @@ const remoteCache = new Map<
 const DISCOVERY_TTL_MS = 15_000;
 const METADATA_TTL_MS = 60_000;
 const CONNECT_TIMEOUT_MS = 20_000;
+const DYNAMIC_URL_TTL_MS = 5_000;
+
+const dynamicUrlCache = new Map<
+  string,
+  { expiresAt: number; url: string | null }
+>();
 
 function now() {
   return Date.now();
@@ -201,10 +210,78 @@ function resolveUrl(provider: RemoteMcpProvider): string | null {
 async function resolveUrlAsync(
   provider: RemoteMcpProvider,
 ): Promise<string | null> {
-  return resolveUrl(provider);
+  const direct = resolveUrl(provider);
+  if (direct) return direct;
+
+  if (!provider.urlFile) return null;
+
+  const cached = dynamicUrlCache.get(provider.id);
+  const t = now();
+  if (cached && cached.expiresAt > t) return cached.url;
+
+  try {
+    const separator = provider.urlFile.includes("?") ? "&" : "?";
+    const response = await fetch(
+      provider.urlFile + separator + "t=" + t,
+      {
+        cache: "no-store",
+        headers: {
+          "cache-control": "no-cache",
+          pragma: "no-cache",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      dynamicUrlCache.set(provider.id, {
+        expiresAt: t + DYNAMIC_URL_TTL_MS,
+        url: null,
+      });
+      return null;
+    }
+
+    const document = (await response.json()) as Record<string, unknown>;
+    const key = provider.urlFileKey?.trim() || "url";
+    const value = document[key];
+    const expiresAt =
+      typeof document.expiresAt === "string"
+        ? Date.parse(document.expiresAt)
+        : NaN;
+
+    if (expiresAt && Number.isFinite(expiresAt) && t >= expiresAt) {
+      dynamicUrlCache.set(provider.id, {
+        expiresAt: t + DYNAMIC_URL_TTL_MS,
+        url: null,
+      });
+      return null;
+    }
+
+    const url =
+      typeof value === "string" && value.trim()
+        ? normalizeResolvedUrl(provider, value)
+        : null;
+
+    dynamicUrlCache.set(provider.id, {
+      expiresAt: t + DYNAMIC_URL_TTL_MS,
+      url,
+    });
+    return url;
+  } catch {
+    dynamicUrlCache.set(provider.id, {
+      expiresAt: t + DYNAMIC_URL_TTL_MS,
+      url: null,
+    });
+    return null;
+  }
 }
 
-function bearerToken(provider: RemoteMcpProvider): string | undefined {
+function bearerToken(
+  provider: RemoteMcpProvider,
+  vercelOidcToken?: string,
+): string | undefined {
+  if (provider.authType === "vercel-oidc") {
+    return vercelOidcToken?.trim() || undefined;
+  }
   if (!provider.tokenEnv) return undefined;
   return process.env[provider.tokenEnv]?.trim() || undefined;
 }
@@ -212,8 +289,9 @@ function bearerToken(provider: RemoteMcpProvider): string | undefined {
 async function connectProvider(
   provider: RemoteMcpProvider,
   url: string,
+  vercelOidcToken?: string,
 ): Promise<ConnectedProvider> {
-  const token = bearerToken(provider);
+  const token = bearerToken(provider, vercelOidcToken);
   const authProvider = token
     ? {
         token: async () => token,
@@ -266,7 +344,9 @@ async function connectProvider(
   };
 }
 
-async function getConnectedProviders(): Promise<ConnectedProvider[]> {
+async function getConnectedProviders(
+  vercelOidcToken?: string,
+): Promise<ConnectedProvider[]> {
   const registry = await loadRegistry();
 
   const candidates = (
@@ -292,7 +372,7 @@ async function getConnectedProviders(): Promise<ConnectedProvider[]> {
       }
 
       try {
-        const entry = await connectProvider(provider, url);
+        const entry = await connectProvider(provider, url, vercelOidcToken);
         remoteCache.set(provider.id, {
           expiresAt: now() + DISCOVERY_TTL_MS,
           entry,
@@ -331,8 +411,10 @@ export function refreshRemoteMcpCaches() {
   remoteCache.clear();
 }
 
-export async function discoverRemoteMcpTools(): Promise<RemoteMcpTool[]> {
-  const entries = await getConnectedProviders();
+export async function discoverRemoteMcpTools(
+  vercelOidcToken?: string,
+): Promise<RemoteMcpTool[]> {
+  const entries = await getConnectedProviders(vercelOidcToken);
   return entries.flatMap((entry) =>
     entry.tools.map((tool) => ({
       provider: entry.provider,
@@ -344,9 +426,9 @@ export async function discoverRemoteMcpTools(): Promise<RemoteMcpTool[]> {
   );
 }
 
-export async function remoteMcpToolInventory() {
+export async function remoteMcpToolInventory(vercelOidcToken?: string) {
   const registry = await loadRegistry();
-  const entries = await getConnectedProviders();
+  const entries = await getConnectedProviders(vercelOidcToken);
   const byId = new Map(entries.map((entry) => [entry.provider.id, entry]));
 
   const resolvedUrls = new Map(
@@ -366,7 +448,7 @@ export async function remoteMcpToolInventory() {
       name: provider.name,
       source: provider.source ?? null,
       configured: Boolean(resolvedUrls.get(provider.id)),
-      authConfigured: Boolean(bearerToken(provider)),
+      authConfigured: Boolean(bearerToken(provider, vercelOidcToken)),
       connected: Boolean(entry),
       toolCount: entry?.tools.length ?? 0,
       tools: entry?.tools.map((tool) => ({
@@ -385,8 +467,12 @@ export async function remoteMcpToolInventory() {
   };
 }
 
-async function findRemoteTool(providerId: string, toolName: string) {
-  const entries = await getConnectedProviders();
+async function findRemoteTool(
+  providerId: string,
+  toolName: string,
+  vercelOidcToken?: string,
+) {
+  const entries = await getConnectedProviders(vercelOidcToken);
   const entry = entries.find((candidate) => candidate.provider.id === providerId);
   if (!entry) {
     const status = await remoteMcpStatus();
@@ -463,9 +549,9 @@ export function registerRemoteMcpTools(
   }
 }
 
-export async function remoteMcpStatus() {
+export async function remoteMcpStatus(vercelOidcToken?: string) {
   try {
-    await getConnectedProviders();
+    await getConnectedProviders(vercelOidcToken);
     const registry = await loadRegistry();
 
     const resolvedUrls = new Map(
@@ -486,7 +572,7 @@ export async function remoteMcpStatus() {
         name: provider.name,
         enabled: provider.enabled !== false,
         configured: Boolean(url),
-        authConfigured: Boolean(bearerToken(provider)),
+        authConfigured: Boolean(bearerToken(provider, vercelOidcToken)),
         url: url ? new URL(url).origin + new URL(url).pathname : null,
         source: provider.source ?? null,
         license: provider.license ?? null,
