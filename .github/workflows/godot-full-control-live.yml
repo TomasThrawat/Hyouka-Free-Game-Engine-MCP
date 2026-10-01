@@ -113,8 +113,7 @@ jobs:
             res.on("data",c=>t+=c);
             res.on("end",()=>{
               let tools=null;
-              for(const line of t.split(/
-/)){
+              for(const line of t.split(/\n/)){
                 if(line.startsWith("data: ")){
                   try{
                     const obj=JSON.parse(line.slice(6));
