@@ -155,10 +155,10 @@ function uniqueToolName(id: string, used: Set<string>) {
   return name;
 }
 
-async function createHandler() {
+async function createHandler(vercelOidcToken?: string) {
   const [inventory, remoteTools] = await Promise.all([
     discoverTools(),
-    discoverRemoteMcpTools(),
+    discoverRemoteMcpTools(vercelOidcToken),
   ]);
 
   return createMcpHandler((server) => {
@@ -208,7 +208,7 @@ async function createHandler() {
           "Return one inventory for the Godot bridge plus all configured remote MCP providers, including Blender MCP and Krita MCP connection state and dynamically discovered tool counts.",
       },
       async () => {
-        const remote = await remoteMcpToolInventory();
+        const remote = await remoteMcpToolInventory(vercelOidcToken);
         return out({
           godotToolCount: inventory.length,
           remoteMcp: remote,
@@ -240,7 +240,7 @@ async function createHandler() {
 }
 
 async function handler(req: Request) {
-  const mcp = await createHandler();
+  const mcp = await createHandler(req.headers.get("x-vercel-oidc-token") ?? undefined);
   return mcp(req);
 }
 
