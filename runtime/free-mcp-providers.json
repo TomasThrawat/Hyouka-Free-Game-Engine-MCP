@@ -1,5 +1,5 @@
 {
-  "version": "1.5.1",
+  "version": "1.5.2",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -74,34 +74,9 @@
       "urlFileKey": "url"
     },
     {
-      "id": "godot-full-control-157",
-      "name": "Godot Full Control 157",
-      "description": "High-coverage Godot 4 MCP implementation with deep scene, runtime, rendering, audio, animation and physics controls.",
-      "urlEnv": "HYOUKA_GODOT_FULL_MCP_URL",
-      "enabled": true,
-      "source": "https://github.com/tugcantopaloglu/godot-mcp",
-      "license": "MIT",
-      "capabilities": [
-        "scene-manipulation",
-        "scripting",
-        "2d-rendering",
-        "3d-rendering",
-        "ui",
-        "audio",
-        "animation",
-        "physics",
-        "signals",
-        "runtime-input",
-        "project-management"
-      ],
-      "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
-    },
-    {
       "id": "godot-live-180",
       "name": "Godot Live Control 180",
-      "description": "Godot 4.7-focused MCP with project/build/export, live game control, screenshots, scene inspection and full-control operations.",
-      "urlEnv": "HYOUKA_GODOT_LIVE_MCP_URL",
+      "description": "Godot 4.7 full-control MCP over Streamable HTTP with the upstream 180+ native and advanced tool suite.",
       "enabled": true,
       "source": "https://github.com/Fulviuus/godot-mcp",
       "capabilities": [
@@ -119,7 +94,11 @@
         "deep-editor-control"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "authType": "vercel-oidc",
+      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-Free-Game-Engine-MCP/main/runtime/godot-full-control-bridge.json",
+      "urlFileKey": "url",
+      "license": "MIT"
     },
     {
       "id": "sfxmint",
