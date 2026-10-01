@@ -1,0 +1,52 @@
+name: Godot OIDC Proxy Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install proxy dependencies
+        run: |
+          set -e
+          python3 -m venv /tmp/proxy-smoke
+          /tmp/proxy-smoke/bin/pip install "aiohttp>=3.11,<4" "PyJWT[crypto]>=2.9,<3"
+          /tmp/proxy-smoke/bin/python -c 'import aiohttp, jwt; print("IMPORTS=PASS")'
+
+      - name: Start proxy
+        run: |
+          set -Eeuo pipefail
+          rm -f /tmp/proxy.log
+          PORT=18081 UPSTREAM_URL=http://127.0.0.1:9766             nohup /tmp/proxy-smoke/bin/python -u godot/oidc_proxy.py             >/tmp/proxy.log 2>&1 &
+          PID=$!
+          echo "$PID" >/tmp/proxy.pid
+          echo "PID=$PID"
+          for i in $(seq 1 20); do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo "PROCESS_DIED"
+              cat /tmp/proxy.log || true
+              ps -ef | grep -E 'oidc_proxy|proxy-smoke' | grep -v grep || true
+              ss -ltnp || true
+              exit 1
+            fi
+            STATUS="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}'               -X POST http://127.0.0.1:18081/mcp               -H 'Content-Type: application/json'               -d '{}' || true)"
+            echo "PROBE_$i=$STATUS"
+            if test "$STATUS" = "401"; then
+              echo "PROXY_SMOKE=PASS"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "PROXY_SMOKE=FAIL"
+          cat /tmp/proxy.log || true
+          ps -ef | grep -E 'oidc_proxy|proxy-smoke' | grep -v grep || true
+          ss -ltnp || true
+          exit 1
