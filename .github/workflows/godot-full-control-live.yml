@@ -130,47 +130,69 @@ jobs:
 
       - name: Start authenticated public tunnel
         run: |
-          set -e
+          set -Eeuo pipefail
           python3 -m py_compile godot/oidc_proxy.py
           export PORT=18081
           export UPSTREAM_URL=http://127.0.0.1:9766
+
           nohup /tmp/godot-full-control-venv/bin/python -u godot/oidc_proxy.py             >/tmp/godot-full-control-proxy.log 2>&1 &
           PROXY_PID=$!
           echo "$PROXY_PID" >/tmp/godot-full-control-proxy.pid
-          READY=0
+
+          READY_PROXY=0
           for i in $(seq 1 60); do
-            STATUS="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}'               -X POST http://127.0.0.1:18081/mcp               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
-            if test "$STATUS" = "401"; then READY=1; break; fi
             if ! kill -0 "$PROXY_PID" 2>/dev/null; then
-              cat /tmp/godot-full-control-proxy.log
+              echo "OIDC_PROXY_DIED"
+              cat /tmp/godot-full-control-proxy.log || true
               exit 1
             fi
-            if [ "$i" -eq 10 ]; then
-              echo "=== OIDC proxy diagnostics ==="
-              cat /tmp/godot-full-control-proxy.log || true
-              (ss -ltnp || true)
+            STATUS="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}'               -X POST http://127.0.0.1:18081/mcp               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
+            if test "$STATUS" = "401"; then
+              READY_PROXY=1
+              break
             fi
             sleep 1
           done
-          test "$READY" -eq 1
-          ss -ltn | grep -q ":18081 " || { echo "OIDC_PROXY_NOT_LISTENING"; cat /tmp/godot-full-control-proxy.log || true; ss -ltnp || true; exit 1; }
-          rm -f /tmp/godot-full-control-url
-          export PROXY_PORT=18081
-          nohup bash godot/full-control-supervisor.sh \
-            >/tmp/godot-full-control-supervisor.log 2>&1 &
-          SUPERVISOR_PID=$!
-          echo "$SUPERVISOR_PID" >/tmp/godot-full-control-supervisor.pid
+          test "$READY_PROXY" -eq 1
+          ss -ltn | grep -q ':18081 ' || {
+            cat /tmp/godot-full-control-proxy.log || true
+            ss -ltnp || true
+            exit 1
+          }
+
+          rm -f /tmp/godot-full-control-url /tmp/godot-full-control-tunnel.log
+          nohup ssh             -o StrictHostKeyChecking=no             -o UserKnownHostsFile=/dev/null             -o LogLevel=ERROR             -o ExitOnForwardFailure=yes             -o ServerAliveInterval=20             -o ServerAliveCountMax=3             -R 80:127.0.0.1:18081             nokey@localhost.run             >/tmp/godot-full-control-tunnel.log 2>&1 &
+          TUNNEL_PID=$!
+          echo "$TUNNEL_PID" >/tmp/godot-full-control-tunnel.pid
+
+          URL=""
+          READY_TUNNEL=0
           for i in $(seq 1 90); do
-            if test -s /tmp/godot-full-control-url; then break; fi
-            if ! kill -0 "$SUPERVISOR_PID" 2>/dev/null; then
-              cat /tmp/godot-full-control-supervisor.log
+            URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.lhr\.life' /tmp/godot-full-control-tunnel.log | tail -1 || true)"
+            if test -n "$URL"; then
+              STATUS="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}'                 -X POST "$URL/mcp"                 -H 'Content-Type: application/json'                 -H 'Accept: application/json, text/event-stream'                 -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
+              if test "$STATUS" = "401"; then
+                READY_TUNNEL=1
+                break
+              fi
+            fi
+            if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+              echo "LOCALHOST_RUN_TUNNEL_DIED"
+              cat /tmp/godot-full-control-tunnel.log || true
               exit 1
             fi
             sleep 2
           done
-          test -s /tmp/godot-full-control-url
-          echo "GODOT_FULL_CONTROL_URL=$(cat /tmp/godot-full-control-url)"
 
+          if test "$READY_TUNNEL" -ne 1; then
+            echo "LOCALHOST_RUN_TUNNEL_TIMEOUT"
+            cat /tmp/godot-full-control-tunnel.log || true
+            exit 1
+          fi
+
+          printf '%s/mcp
+' "$URL" >/tmp/godot-full-control-url
+          echo "GODOT_FULL_CONTROL_URL=$URL/mcp"
       - name: Publish live full-control manifest
         run: |
           set -e
@@ -233,8 +255,11 @@ jobs:
           while true; do
             kill -0 "$(cat /tmp/godot-full-control.pid)"
             kill -0 "$(cat /tmp/godot-full-control-proxy.pid)"
-            kill -0 "$(cat /tmp/godot-full-control-supervisor.pid)"
             STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}'               -X POST "$(cat /tmp/godot-full-control-url)/mcp"               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"keepalive","version":"1"}}}' || true)"
             test "$STATUS" = "401"
+            if ! kill -0 "$(cat /tmp/godot-full-control-tunnel.pid)"; then
+              echo "FULL_CONTROL_TUNNEL_DIED"
+              exit 1
+            fi
             sleep 30
           done
