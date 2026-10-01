@@ -28,7 +28,6 @@
       "id": "blender-mcp",
       "name": "Blender MCP",
       "description": "Remote Blender MCP over Streamable HTTP. The unified Godot MCP discovers its tools dynamically from the configured remote endpoint.",
-      "urlEnv": "HYOUKA_BLENDER_MCP_URL",
       "authType": "vercel-oidc",
       "enabled": true,
       "source": "https://github.com/dcc-mcp/dcc-mcp-blender",
@@ -48,13 +47,14 @@
         "glb-export"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-DCC-Remote-MCP/main/runtime/blender-endpoint.json",
+      "urlFileKey": "url"
     },
     {
       "id": "krita-mcp",
       "name": "Krita MCP",
       "description": "Remote Krita MCP over Streamable HTTP. The unified Godot MCP discovers its tools dynamically from the configured remote endpoint.",
-      "urlEnv": "HYOUKA_KRITA_MCP_URL",
       "authType": "vercel-oidc",
       "enabled": true,
       "source": "https://github.com/dcc-mcp/dcc-mcp-krita",
@@ -69,7 +69,9 @@
         "texture-source-art"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list"
+      "discoveryProtocol": "MCP tools/list",
+      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-DCC-Remote-MCP/main/runtime/krita-endpoint.json",
+      "urlFileKey": "url"
     },
     {
       "id": "godot-full-control-157",
