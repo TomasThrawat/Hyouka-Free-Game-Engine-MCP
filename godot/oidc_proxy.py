@@ -1,90 +1,132 @@
 #!/usr/bin/env python3
+
 from __future__ import annotations
 
 import os
 
-import aiohttp
 import jwt
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
+from jwt import PyJWKClient
 
-TEAM = os.environ.get("VERCEL_OIDC_TEAM_SLUG", "hyouka1")
-PROJECT = os.environ.get("VERCEL_OIDC_PROJECT", "hyouka-free-game-engine-mcp")
+TEAM_SLUG = os.environ.get("VERCEL_OIDC_TEAM_SLUG", "hyouka1")
+PROJECT_NAME = os.environ.get(
+    "VERCEL_OIDC_PROJECT",
+    "hyouka-free-game-engine-mcp",
+)
 ENVIRONMENT = os.environ.get("VERCEL_OIDC_ENVIRONMENT", "production")
-ISSUER = f"https://oidc.vercel.com/{TEAM}"
-AUDIENCE = f"https://vercel.com/{TEAM}"
-SUBJECT = f"owner:{TEAM}:project:{PROJECT}:environment:{ENVIRONMENT}"
-UPSTREAM = os.environ.get("UPSTREAM_URL", "http://127.0.0.1:9766").rstrip("/")
+
+ISSUER = f"https://oidc.vercel.com/{TEAM_SLUG}"
+AUDIENCE = f"https://vercel.com/{TEAM_SLUG}"
+SUBJECT = f"owner:{TEAM_SLUG}:project:{PROJECT_NAME}:environment:{ENVIRONMENT}"
+JWKS_URL = f"{ISSUER}/.well-known/jwks"
+
+UPSTREAM_URL = os.environ.get("UPSTREAM_URL", "http://127.0.0.1:9766").rstrip("/")
 PORT = int(os.environ.get("PORT", "10002"))
-JWKS = jwt.PyJWKClient(f"{ISSUER}/.well-known/jwks")
 
-def validate(token: str) -> None:
-    key = JWKS.get_signing_key_from_jwt(token).key
-    jwt.decode(
-        token,
-        key=key,
-        algorithms=["RS256"],
-        issuer=ISSUER,
-        audience=AUDIENCE,
-        subject=SUBJECT,
-        options={"require": ["iss", "sub", "aud", "exp", "iat"]},
-    )
+_jwks = PyJWKClient(JWKS_URL)
+_timeout = ClientTimeout(total=None)
 
-async def mcp(request: web.Request) -> web.StreamResponse:
+
+def validate_token(request: web.Request) -> None:
     authorization = request.headers.get("Authorization", "")
     if not authorization.startswith("Bearer "):
-        return web.Response(
-            status=401,
-            text="Unauthorized",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    try:
-        validate(authorization[7:].strip())
-    except Exception:
-        return web.Response(
-            status=401,
+        raise web.HTTPUnauthorized(
             text="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    body = await request.read()
-    headers = {
-        k:v for k,v in request.headers.items()
-        if k.lower() not in {"authorization","host","content-length","connection"}
+    token = authorization[len("Bearer "):].strip()
+    if not token:
+        raise web.HTTPUnauthorized(
+            text="Unauthorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        key = _jwks.get_signing_key_from_jwt(token)
+        jwt.decode(
+            token,
+            key.key,
+            algorithms=["RS256"],
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            subject=SUBJECT,
+        )
+    except Exception:
+        raise web.HTTPUnauthorized(
+            text="Unauthorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def forwarded_headers(request: web.Request) -> dict[str, str]:
+    hop_by_hop = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        "host",
+        "content-length",
+        "authorization",
+    }
+    return {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in hop_by_hop
     }
 
-    async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=None, sock_read=None)
-    ) as session:
+
+async def proxy(request: web.Request) -> web.StreamResponse:
+    validate_token(request)
+
+    target = UPSTREAM_URL + request.path_qs
+    body = await request.read()
+
+    async with ClientSession(timeout=_timeout) as session:
         async with session.request(
             request.method,
-            UPSTREAM + request.path_qs,
-            headers=headers,
+            target,
+            headers=forwarded_headers(request),
             data=body,
             allow_redirects=False,
         ) as upstream:
             response = web.StreamResponse(
                 status=upstream.status,
                 headers={
-                    k:v for k,v in upstream.headers.items()
-                    if k.lower() not in {"content-length","transfer-encoding","connection"}
+                    key: value
+                    for key, value in upstream.headers.items()
+                    if key.lower()
+                    not in {
+                        "connection",
+                        "keep-alive",
+                        "proxy-authenticate",
+                        "proxy-authorization",
+                        "te",
+                        "trailer",
+                        "transfer-encoding",
+                        "upgrade",
+                        "content-length",
+                    }
                 },
             )
             await response.prepare(request)
+
             async for chunk in upstream.content.iter_chunked(65536):
                 await response.write(chunk)
+
             await response.write_eof()
             return response
 
-async def health(_: web.Request) -> web.Response:
-    return web.Response(
-        status=401,
-        text="Unauthorized",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
 
-app = web.Application()
-app.router.add_route("*", "/mcp", mcp)
-app.router.add_get("/health", health)
+def make_app() -> web.Application:
+    app = web.Application()
+    app.router.add_route("*", "/{path:.*}", proxy)
+    return app
+
 
 if __name__ == "__main__":
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    web.run_app(make_app(), host="0.0.0.0", port=PORT)
