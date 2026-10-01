@@ -1,20 +1,10 @@
 name: Godot Full Control Live MCP
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/godot-full-control-live.yml"
-      - "godot/oidc_proxy.py"
-      - "godot/full-control-supervisor.sh"
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: write
-
-concurrency:
-  group: godot-full-control-live
-  cancel-in-progress: true
 
 jobs:
   live:
