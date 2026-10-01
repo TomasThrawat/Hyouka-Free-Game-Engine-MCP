@@ -9,20 +9,12 @@ PROXY_PORT="${PROXY_PORT:-18081}"
 
 start_tunnel() {
   rm -f "$LOG"
-  ssh -p 443 \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o ExitOnForwardFailure=yes \
-    -o ServerAliveInterval=20 \
-    -o ServerAliveCountMax=3 \
-    -R 0:127.0.0.1:$PROXY_PORT \
-    free.pinggy.io >"$LOG" 2>&1 &
+  ssh     -o StrictHostKeyChecking=no     -o UserKnownHostsFile=/dev/null     -o LogLevel=ERROR     -o ExitOnForwardFailure=yes     -o ServerAliveInterval=20     -o ServerAliveCountMax=3     -R 80:127.0.0.1:$PROXY_PORT     nokey@localhost.run >"$LOG" 2>&1 &
   echo $! >"$PID_FILE"
 }
 
 get_url() {
-  grep -Eo 'https://[A-Za-z0-9.-]+\.(a\.pinggy\.link|run\.pinggy-free\.link|pinggy-free\.link|free\.pinggy\.net)' "$LOG" | tail -1 || true
+  grep -Eo 'https://[A-Za-z0-9.-]+\.lhr\.life|https://[A-Za-z0-9.-]+\.localhost\.run' "$LOG" | tail -1 || true
 }
 
 probe() {
