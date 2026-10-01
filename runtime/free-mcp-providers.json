@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "providers": [
     {
       "id": "assetmcp-vercel",
@@ -27,7 +27,7 @@
     {
       "id": "blender-mcp",
       "name": "Blender MCP",
-      "description": "Remote Blender MCP over Streamable HTTP. Discovered dynamically with MCP tools/list inside the unified Godot MCP.",
+      "description": "Remote Blender MCP over Streamable HTTP. The unified Godot MCP discovers its tools dynamically from the configured remote endpoint.",
       "urlEnv": "HYOUKA_BLENDER_MCP_URL",
       "tokenEnv": "HYOUKA_BLENDER_MCP_TOKEN",
       "enabled": true,
@@ -48,19 +48,16 @@
         "glb-export"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list",
-      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-DCC-Remote-MCP/main/runtime/blender-endpoint.json",
-      "urlFileKey": "url",
-      "authType": "vercel-oidc"
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "krita-mcp",
       "name": "Krita MCP",
-      "description": "Remote Krita MCP over Streamable HTTP. Discovered dynamically with MCP tools/list inside the unified Godot MCP.",
+      "description": "Remote Krita MCP over Streamable HTTP. The unified Godot MCP discovers its tools dynamically from the configured remote endpoint.",
       "urlEnv": "HYOUKA_KRITA_MCP_URL",
       "tokenEnv": "HYOUKA_KRITA_MCP_TOKEN",
       "enabled": true,
-      "source": "https://github.com/nanayax3/krita-mcp",
+      "source": "https://github.com/dcc-mcp/dcc-mcp-krita",
       "license": "MIT",
       "capabilities": [
         "canvas",
@@ -72,10 +69,7 @@
         "texture-source-art"
       ],
       "dynamicDiscovery": true,
-      "discoveryProtocol": "MCP tools/list",
-      "urlFile": "https://raw.githubusercontent.com/TomasThrawat/Hyouka-DCC-Remote-MCP/main/runtime/krita-endpoint.json",
-      "urlFileKey": "url",
-      "authType": "vercel-oidc"
+      "discoveryProtocol": "MCP tools/list"
     },
     {
       "id": "godot-full-control-157",
