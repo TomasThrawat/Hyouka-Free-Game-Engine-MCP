@@ -33,9 +33,14 @@ for provider_id in ("blender-mcp", "krita-mcp"):
     assert provider.get("dynamicDiscovery") is True
     assert provider.get("discoveryProtocol") == "MCP tools/list"
     assert provider.get("urlEnv"), f"{provider_id} missing urlEnv"
+    assert provider.get("tokenEnv"), f"{provider_id} missing tokenEnv"
+    assert "urlFile" not in provider
+    assert "urlFileKey" not in provider
+    assert "authType" not in provider
     assert "runtimeManifestUrl" not in provider
     assert "runtimeManifestKey" not in provider
 
+assert not any(provider.get("id") in {"blender-dcc", "krita"} for provider in providers)
 print("Unified remote MCP registry validated: Blender MCP + Krita MCP are ordinary remote providers.")
 PY
 
@@ -48,6 +53,10 @@ assert "discoverRemoteMcpTools" in route
 assert "registerRemoteMcpTools" in route
 assert "remoteMcpToolInventory" in route
 assert '"godot_mcp_inventory"' in route
+assert "godot_blender_discover_tools" not in route
+assert "godot_krita_discover_tools" not in route
+assert "godot_blender_status" not in route
+assert "godot_krita_status" not in route
 print("Unified MCP route validated: Godot + remote discovery + unified inventory tool.")
 PY
 
@@ -91,7 +100,8 @@ curl -fL --retry 8 -o /tmp/SHA512-SUMS.txt https://github.com/godotengine/godot/
 echo "== Verify Godot checksum =="
 CHECKSUM=$(grep -E '[[:space:]]Godot_v4.7.2-stable_mono_linux_x86_64.zip$' /tmp/SHA512-SUMS.txt | awk '{print $1}')
 test -n "$CHECKSUM"
-printf '%s  /tmp/godot.zip\n' "$CHECKSUM" | sha512sum -c -
+printf '%s  /tmp/godot.zip
+' "$CHECKSUM" | sha512sum -c -
 
 echo "== Verify Godot .NET runtime =="
 rm -rf /tmp/godot
@@ -99,7 +109,7 @@ mkdir -p /tmp/godot
 unzip -oq /tmp/godot.zip -d /tmp/godot
 GODOT_DIR=$(find /tmp/godot -maxdepth 1 -type d -name 'Godot_v4.7.2-stable_mono_linux_x86_64' -print -quit)
 test -n "$GODOT_DIR"
-test -d "$GODOT_DIR/GodotSharp/Api/Debug"
+test -d "$GODOT_DIR/GodotSharp/Api/Debug/"
 
 GODOT_BIN=$(find "$GODOT_DIR" -maxdepth 1 -type f -name 'Godot_v4.7.2-stable_mono_linux*' -print -quit)
 test -n "$GODOT_BIN"
