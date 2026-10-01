@@ -60,6 +60,24 @@ assert "godot_krita_status" not in route
 print("Unified MCP route validated: Godot + remote discovery + unified inventory tool.")
 PY
 
+echo "== Validate Godot full-control provider wiring =="
+python3 - <<'PY'
+import json
+from pathlib import Path
+providers = json.loads(Path("runtime/free-mcp-providers.json").read_text())["providers"]
+ids = {p["id"]: p for p in providers}
+assert "godot-full-control-157" not in ids
+full = ids["godot-live-180"]
+assert full["enabled"] is True
+assert full["authType"] == "vercel-oidc"
+assert full["urlFile"]
+assert full["urlFileKey"] == "url"
+assert full["dynamicDiscovery"] is True
+assert full["discoveryProtocol"] == "MCP tools/list"
+assert full["source"] == "https://github.com/Fulviuus/godot-mcp"
+print("Godot full-control provider wiring validated.")
+PY
+
 echo "== Validate official Godot CLI manifest =="
 python3 - <<'PY'
 import json
