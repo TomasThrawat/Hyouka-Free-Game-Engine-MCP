@@ -1,5 +1,9 @@
 name: Godot Full Control Live MCP
 
+concurrency:
+  group: godot-full-control-live
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
   push:
@@ -189,17 +193,17 @@ jobs:
           echo "GODOT_FULL_CONTROL_URL=$URL/mcp"
 
       - name: Publish live full-control manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -e
+          set -Eeuo pipefail
           URL="$(cat /tmp/godot-full-control-url)"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          jq -n --arg url "$URL" --arg run "$GITHUB_RUN_ID"             '{status:"ok",engine:"Godot Full Control",url:$url,runtime:"Fulviuus/godot-mcp HTTP",source:"https://github.com/Fulviuus/godot-mcp",ownerRunId:$run,toolCount:182}'             > runtime/godot-full-control-bridge.json
-          git add runtime/godot-full-control-bridge.json
-          git commit -m "chore: publish live Godot full-control endpoint [skip ci]" || true
-          git push origin HEAD:main
+          jq -nc --arg url "$URL" --arg run "$GITHUB_RUN_ID" '{status:"ok",engine:"Godot Full Control",url:$url,runtime:"Fulviuus/godot-mcp HTTP",source:"https://github.com/Fulviuus/godot-mcp",ownerRunId:$run,toolCount:182}' | base64 -w0 >/tmp/godot-full-control-bridge.b64
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/runtime/godot-full-control-bridge.json" -f message="chore: publish live Godot full-control endpoint [skip ci]" -f content="$(cat /tmp/godot-full-control-bridge.b64)" -f branch="main" >/tmp/godot-full-control-publish.json
+          test "$(jq -r '.content.path' /tmp/godot-full-control-publish.json)" = "runtime/godot-full-control-bridge.json"
+          gh api "repos/$GITHUB_REPOSITORY/contents/runtime/godot-full-control-bridge.json?ref=main" >/tmp/godot-full-control-verify.json
+          echo "$(jq -r '.content // empty' /tmp/godot-full-control-verify.json)" | base64 -d | jq -e --arg url "$URL" '.url == $url'
           touch /tmp/godot-full-control-published
-
       - name: Verify public auth gate
         run: |
           set -e
