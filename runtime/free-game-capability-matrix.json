@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "goal": "full-game-production",
   "domains": [
     {
@@ -17,22 +17,32 @@
     },
     {
       "id": "deep-godot-control",
-      "status": "optional-remote",
+      "status": "remote-live",
       "providers": [
-        "godot-full-control-157",
         "godot-live-180"
       ],
       "coverage": [
-        "deep scene mutation",
-        "runtime input",
+        "project inspection",
+        "project settings",
+        "resource management",
+        "build",
+        "export",
+        "run/stop",
+        "game logs",
         "live scene tree",
-        "eval",
+        "runtime eval",
+        "node property mutation",
         "hot reload",
         "screenshots",
-        "advanced 2D/3D",
+        "runtime input",
+        "2D/3D rendering",
+        "UI controls",
         "audio",
         "animation",
-        "physics"
+        "physics",
+        "signals",
+        "project creation",
+        "advanced editor operations"
       ]
     },
     {
