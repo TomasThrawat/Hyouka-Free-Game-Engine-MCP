@@ -1,0 +1,61 @@
+name: Pinggy Tunnel Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Install tunnel tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y openssh-client curl netcat-openbsd
+
+      - name: Start local server
+        run: |
+          set -Eeuo pipefail
+          nohup python3 -m http.server 18080 --bind 127.0.0.1 >/tmp/http.log 2>&1 &
+          echo $! >/tmp/http.pid
+          sleep 1
+          curl -fsS http://127.0.0.1:18080 >/dev/null
+
+      - name: Start Pinggy
+        run: |
+          set -Eeuo pipefail
+          rm -f /tmp/pinggy.log /tmp/pinggy-url
+          timeout 150s ssh -vvv -p 443             -o StrictHostKeyChecking=no             -o UserKnownHostsFile=/dev/null             -o ExitOnForwardFailure=yes             -o ServerAliveInterval=20             -o ServerAliveCountMax=3             -R 0:127.0.0.1:18080             free.pinggy.io             >/tmp/pinggy.log 2>&1 &
+          PID=$!
+          echo "$PID" >/tmp/pinggy.pid
+          for i in $(seq 1 60); do
+            URL="$(grep -Eo 'https://[A-Za-z0-9.-]+.a.pinggy.link' /tmp/pinggy.log | tail -1 || true)"
+            if test -n "$URL"; then
+              echo "PINGGY_URL=$URL"
+              echo "$URL" >/tmp/pinggy-url
+              break
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo "PINGGY_PROCESS_DIED"
+              cat /tmp/pinggy.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+          test -s /tmp/pinggy-url
+          URL="$(cat /tmp/pinggy-url)"
+          STATUS="$(curl -sS --max-time 15 -o /tmp/pinggy-response -w '%{http_code}' "$URL")"
+          echo "PINGGY_HTTP_STATUS=$STATUS"
+          cat /tmp/pinggy-response
+          test "$STATUS" = "200"
+
+      - name: Dump diagnostics
+        if: always()
+        run: |
+          cat /tmp/pinggy.log || true
+          ps -ef | grep ssh | grep -v grep || true
+          ss -ltnp || true
