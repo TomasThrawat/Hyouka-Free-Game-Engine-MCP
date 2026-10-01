@@ -141,7 +141,10 @@ jobs:
       - name: Start authenticated public tunnel
         run: |
           set -e
-          nohup env             PORT=10002             UPSTREAM_URL=http://127.0.0.1:9766             /tmp/godot-full-control-venv/bin/python godot/oidc_proxy.py             >/tmp/godot-full-control-proxy.log 2>&1 &
+          python3 -m py_compile godot/oidc_proxy.py
+          export PORT=10002
+          export UPSTREAM_URL=http://127.0.0.1:9766
+          nohup /tmp/godot-full-control-venv/bin/python -u godot/oidc_proxy.py             >/tmp/godot-full-control-proxy.log 2>&1 &
           PROXY_PID=$!
           echo "$PROXY_PID" >/tmp/godot-full-control-proxy.pid
           READY=0
@@ -151,6 +154,11 @@ jobs:
             if ! kill -0 "$PROXY_PID" 2>/dev/null; then
               cat /tmp/godot-full-control-proxy.log
               exit 1
+            fi
+            if [ "$i" -eq 10 ]; then
+              echo "=== OIDC proxy diagnostics ==="
+              cat /tmp/godot-full-control-proxy.log || true
+              (ss -ltnp || true)
             fi
             sleep 1
           done
