@@ -1,84 +1,212 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "goal": "full-game-production",
   "domains": [
     {
       "id": "engine",
       "status": "native",
-      "coverage": ["Godot 4.7.2", "project setup", "scene creation", "runtime invocation", "CLI", "reflection", "headless smoke validation"]
+      "coverage": [
+        "Godot 4.7.2",
+        "project setup",
+        "scene creation",
+        "runtime invocation",
+        "CLI",
+        "reflection",
+        "headless smoke validation"
+      ]
     },
     {
       "id": "deep-godot-control",
       "status": "optional-remote",
-      "providers": ["godot-full-control-157", "godot-live-180"],
-      "coverage": ["deep scene mutation", "runtime input", "live scene tree", "eval", "hot reload", "screenshots", "advanced 2D/3D", "audio", "animation", "physics"]
+      "providers": [
+        "godot-full-control-157",
+        "godot-live-180"
+      ],
+      "coverage": [
+        "deep scene mutation",
+        "runtime input",
+        "live scene tree",
+        "eval",
+        "hot reload",
+        "screenshots",
+        "advanced 2D/3D",
+        "audio",
+        "animation",
+        "physics"
+      ]
     },
     {
       "id": "3d-modeling",
-      "status": "optional-local",
-      "providers": ["blender-dcc"],
-      "coverage": ["modeling", "mesh editing", "UV", "modifiers", "materials", "shader nodes", "rigging", "animation", "rendering", "GLB export"]
+      "status": "optional-remote",
+      "providers": [
+        "blender-mcp"
+      ],
+      "coverage": [
+        "modeling",
+        "mesh editing",
+        "UV",
+        "modifiers",
+        "materials",
+        "shader nodes",
+        "rigging",
+        "animation",
+        "rendering",
+        "GLB export"
+      ]
     },
     {
       "id": "2d-art",
-      "status": "optional-local",
-      "providers": ["krita"],
-      "coverage": ["canvas", "layers", "painting", "shape drawing", "filters", "export", "texture-source art"]
+      "status": "optional-remote",
+      "providers": [
+        "krita-mcp"
+      ],
+      "coverage": [
+        "canvas",
+        "layers",
+        "painting",
+        "shape drawing",
+        "filters",
+        "export",
+        "texture-source art"
+      ]
     },
     {
       "id": "free-assets",
       "status": "remote",
-      "providers": ["assetmcp-vercel"],
-      "coverage": ["Kenney", "Poly Haven", "ambientCG", "OpenGameArt", "Openverse", "itch.io", "Godot Asset Library", "license audit", "asset download"]
+      "providers": [
+        "assetmcp-vercel"
+      ],
+      "coverage": [
+        "Kenney",
+        "Poly Haven",
+        "ambientCG",
+        "OpenGameArt",
+        "Openverse",
+        "itch.io",
+        "Godot Asset Library",
+        "license audit",
+        "asset download"
+      ]
     },
     {
       "id": "audio-sfx",
       "status": "remote-and-optional-local",
-      "providers": ["sfxmint", "sfx-gen-local"],
-      "coverage": ["CC0 sound search", "UI SFX", "foley", "ambience", "local generation", "variations"]
+      "providers": [
+        "sfxmint",
+        "sfx-gen-local"
+      ],
+      "coverage": [
+        "CC0 sound search",
+        "UI SFX",
+        "foley",
+        "ambience",
+        "local generation",
+        "variations"
+      ]
     },
     {
       "id": "textures",
-      "status": "covered-through-dcc-and-assets",
-      "providers": ["blender-dcc", "assetmcp-vercel", "krita"],
-      "coverage": ["PBR materials", "shader nodes", "texture source art", "asset texture retrieval", "texture optimization hooks"]
+      "status": "covered-through-remote-dcc-and-assets",
+      "providers": [
+        "blender-mcp",
+        "assetmcp-vercel",
+        "krita-mcp"
+      ],
+      "coverage": [
+        "PBR materials",
+        "shader nodes",
+        "texture source art",
+        "asset texture retrieval",
+        "texture optimization hooks"
+      ]
     },
     {
       "id": "level-design",
       "status": "covered",
-      "providers": ["engine", "deep-godot-control", "blender-dcc", "free-assets"],
-      "coverage": ["scene layout", "collision-ready geometry", "asset placement", "camera/light setup"]
+      "providers": [
+        "engine",
+        "deep-godot-control",
+        "blender-mcp",
+        "free-assets"
+      ],
+      "coverage": [
+        "scene layout",
+        "collision-ready geometry",
+        "asset placement",
+        "camera/light setup"
+      ]
     },
     {
       "id": "testing",
       "status": "covered-with-gaps",
-      "providers": ["engine", "deep-godot-control", "GitHub Actions"],
-      "coverage": ["headless smoke", "build", "script validation", "live screenshots", "runtime input"],
-      "gaps": ["full GPU/device matrix still requires an external device provider"]
+      "providers": [
+        "engine",
+        "deep-godot-control",
+        "GitHub Actions"
+      ],
+      "coverage": [
+        "headless smoke",
+        "build",
+        "script validation",
+        "live screenshots",
+        "runtime input"
+      ],
+      "gaps": [
+        "full GPU/device matrix still requires an external device provider"
+      ]
     },
     {
       "id": "source-control-ci",
       "status": "native",
-      "providers": ["GitHub", "GitHub Actions"],
-      "coverage": ["source changes", "CI builds", "logs", "artifact workflows"]
+      "providers": [
+        "GitHub",
+        "GitHub Actions"
+      ],
+      "coverage": [
+        "source changes",
+        "CI builds",
+        "logs",
+        "artifact workflows"
+      ]
     },
     {
       "id": "deployment",
       "status": "native",
-      "providers": ["Vercel"],
-      "coverage": ["MCP gateway deployment", "production health", "runtime logs", "deployment inspection"]
+      "providers": [
+        "Vercel"
+      ],
+      "coverage": [
+        "MCP gateway deployment",
+        "production health",
+        "runtime logs",
+        "deployment inspection"
+      ]
     },
     {
       "id": "concept-images",
       "status": "available-via-external-generation",
-      "coverage": ["concept art", "sprite references", "icons", "background references"],
+      "coverage": [
+        "concept art",
+        "sprite references",
+        "icons",
+        "background references"
+      ],
       "note": "Use a connected free image MCP when available; do not treat paid generation as part of the free baseline."
     },
     {
       "id": "verification-and-qa",
       "status": "covered-with-gaps",
-      "coverage": ["dependency audit", "Godot checksum", "manifest validation", "Python syntax", "headless Godot smoke", "production health"],
-      "gaps": ["interactive GUI DCC verification and real-device gameplay automation require those runtimes to be reachable"]
+      "coverage": [
+        "dependency audit",
+        "Godot checksum",
+        "manifest validation",
+        "Python syntax",
+        "headless Godot smoke",
+        "production health"
+      ],
+      "gaps": [
+        "interactive GUI DCC verification and real-device gameplay automation require those runtimes to be reachable"
+      ]
     }
   ]
 }
