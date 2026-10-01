@@ -132,14 +132,14 @@ jobs:
         run: |
           set -e
           python3 -m py_compile godot/oidc_proxy.py
-          export PORT=18765
+          export PORT=18081
           export UPSTREAM_URL=http://127.0.0.1:9766
           nohup /tmp/godot-full-control-venv/bin/python -u godot/oidc_proxy.py             >/tmp/godot-full-control-proxy.log 2>&1 &
           PROXY_PID=$!
           echo "$PROXY_PID" >/tmp/godot-full-control-proxy.pid
           READY=0
           for i in $(seq 1 60); do
-            STATUS="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}'               -X POST http://127.0.0.1:18765/mcp               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
+            STATUS="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}'               -X POST http://127.0.0.1:18081/mcp               -H 'Content-Type: application/json'               -H 'Accept: application/json, text/event-stream'               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' || true)"
             if test "$STATUS" = "401"; then READY=1; break; fi
             if ! kill -0 "$PROXY_PID" 2>/dev/null; then
               cat /tmp/godot-full-control-proxy.log
@@ -153,8 +153,11 @@ jobs:
             sleep 1
           done
           test "$READY" -eq 1
+          ss -ltn | grep -q ":18081 " || { echo "OIDC_PROXY_NOT_LISTENING"; cat /tmp/godot-full-control-proxy.log || true; ss -ltnp || true; exit 1; }
           rm -f /tmp/godot-full-control-url
-          nohup bash godot/full-control-supervisor.sh             >/tmp/godot-full-control-supervisor.log 2>&1 &
+          export PROXY_PORT=18081
+          nohup bash godot/full-control-supervisor.sh \
+            >/tmp/godot-full-control-supervisor.log 2>&1 &
           SUPERVISOR_PID=$!
           echo "$SUPERVISOR_PID" >/tmp/godot-full-control-supervisor.pid
           for i in $(seq 1 90); do
