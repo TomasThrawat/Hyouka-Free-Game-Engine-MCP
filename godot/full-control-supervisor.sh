@@ -22,7 +22,7 @@ start_tunnel() {
 }
 
 get_url() {
-  grep -Eo 'https://[A-Za-z0-9.-]+\.(a\.pinggy\.link|run\.pinggy-free\.link|pinggy-free\.link)' "$LOG" | tail -1 || true
+  grep -Eo 'https://[A-Za-z0-9.-]+\.(a\.pinggy\.link|run\.pinggy-free\.link|pinggy-free\.link|free\.pinggy\.net)' "$LOG" | tail -1 || true
 }
 
 probe() {
