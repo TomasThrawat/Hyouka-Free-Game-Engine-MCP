@@ -76,8 +76,8 @@
     {
       "id": "godot-live-180",
       "name": "Godot Live Control 180",
-      "description": "Godot 4.7 full-control MCP over Streamable HTTP with the upstream 180+ native and advanced tool suite.",
-      "enabled": true,
+      "description": "Disabled duplicate remote Godot provider because the unified gateway exposes the native Godot bridge directly.",
+      "enabled": false,
       "source": "https://github.com/Fulviuus/godot-mcp",
       "capabilities": [
         "project-inspection",
