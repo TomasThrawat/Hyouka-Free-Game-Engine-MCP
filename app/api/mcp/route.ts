@@ -241,7 +241,17 @@ async function createHandler(vercelOidcToken?: string) {
 }
 
 async function handler(req: Request) {
-  const token = req.headers.get("x-vercel-oidc-token")?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim() || undefined;
+  const forwarded = req.headers.get("x-vercel-oidc-token")?.trim();
+  let token = forwarded || process.env.VERCEL_OIDC_TOKEN?.trim() || undefined;
+
+  if (!token) {
+    try {
+      token = (await getVercelOidcToken()).trim() || undefined;
+    } catch {
+      token = undefined;
+    }
+  }
+
   const mcp = await createHandler(token);
   return mcp(req);
 }
